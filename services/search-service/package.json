@@ -1,0 +1,16 @@
+{
+  "name": "@localdepth/search-service",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "node --experimental-strip-types src/index.ts",
+    "dev": "node --watch --experimental-strip-types src/index.ts"
+  },
+  "dependencies": {
+    "@localdepth/database": "*",
+    "@localdepth/logger": "*",
+    "@localdepth/shared-types": "*"
+  }
+}

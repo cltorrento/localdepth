@@ -1,0 +1,29 @@
+{
+  "name": "localdepth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LocalDepth — A travel platform that turns local knowledge into customizable plans",
+  "packageManager": "pnpm@9.15.4",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup": "node infra/scripts/link-workspaces.js",
+    "dev": "node infra/scripts/start-all.js",
+    "start:services": "node infra/scripts/start-all.js",
+    "test:backend": "node infra/scripts/test-backend.js",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "node --experimental-strip-types tests/unit-and-integration.js && node --experimental-strip-types tests/gateway-e2e.js",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
