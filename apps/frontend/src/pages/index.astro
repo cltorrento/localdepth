@@ -1,0 +1,94 @@
+---
+const title = 'LocalDepth';
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f172a;
+        --panel: rgba(15, 23, 42, 0.8);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #10b981;
+        --accent-2: #38bdf8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at top, #1e293b, var(--bg));
+        color: var(--text);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .card {
+        width: min(760px, 90vw);
+        background: var(--panel);
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 18px;
+        padding: 2rem;
+        box-shadow: 0 18px 50px rgba(15, 23, 42, 0.45);
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        letter-spacing: -0.06em;
+      }
+      p {
+        margin: 0.8rem 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        border: 1px solid rgba(16, 185, 129, 0.45);
+        background: rgba(16, 185, 129, 0.08);
+        color: #bbf7d0;
+        border-radius: 999px;
+        padding: 0.35rem 0.75rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .links {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 1.5rem;
+      }
+      a {
+        color: white;
+        text-decoration: none;
+        border-radius: 10px;
+        padding: 0.7rem 1.1rem;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="badge">LocalDepth • Travel Copilot</div>
+      <h1>Viajes más locales, más inteligentes.</h1>
+      <p>
+        Este es el frontend público de LocalDepth. La app está levantada correctamente y lista
+        para conectarse con el gateway del backend en <strong>http://localhost:4000</strong>.
+      </p>
+      <p>
+        El panel administrativo queda en <strong>http://localhost:3001</strong> y la infraestructura
+        auxiliar en Docker está funcionando en los puertos principales del proyecto.
+      </p>
+      <div class="links">
+        <a href="http://localhost:3001">Abrir Admin</a>
+        <a href="http://localhost:4000/health">Comprobar API</a>
+      </div>
+    </main>
+  </body>
+</html>
