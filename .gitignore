@@ -31,3 +31,12 @@ Thumbs.db
 
 # Docker / data volumes local
 data/
+!apps/frontend/src/data/
+apps/frontend/src/data/*
+!apps/frontend/src/data/posts.ts
+
+# Vercel
+.vercel/
+.vercel
+.env*
+api/_handler.mjs

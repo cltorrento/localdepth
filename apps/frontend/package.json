@@ -9,6 +9,7 @@
     "preview": "astro preview --port 3000"
   },
   "dependencies": {
+    "@astrojs/vercel": "^8.2.11",
     "@localdepth/shared-types": "*",
     "@localdepth/shared-utils": "*"
   },

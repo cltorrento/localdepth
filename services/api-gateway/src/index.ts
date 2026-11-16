@@ -5,6 +5,9 @@ import { createLogger } from '@localdepth/logger';
 const logger = createLogger('api-gateway');
 const PORT = Number(process.env.API_GATEWAY_PORT) || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'localdepth_super_secret_jwt_key_change_in_production_2026';
+const personalizedTripRequests = new Map<string, number[]>();
+const personalizedTripLimit = 10;
+const personalizedTripWindowMs = 60 * 60 * 1000;
 
 // Service Target Map
 const SERVICES = {
@@ -145,6 +148,20 @@ export function handleGatewayRequest(
 
   // 5. Recommendations service (Travel Copilot): /api/recommendations/*
   if (path.startsWith('/api/recommendations')) {
+    if (path === '/api/recommendations/plan-and-send' && method === 'POST') {
+      const clientKey = req.socket?.remoteAddress || 'unknown';
+      const now = Date.now();
+      const recentRequests = (personalizedTripRequests.get(clientKey) || [])
+        .filter((timestamp) => now - timestamp < personalizedTripWindowMs);
+      if (recentRequests.length >= personalizedTripLimit) {
+        personalizedTripRequests.set(clientKey, recentRequests);
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '3600' });
+        res.end(JSON.stringify({ success: false, error: 'Has alcanzado el límite de solicitudes de itinerario. Inténtalo más tarde.' }));
+        return;
+      }
+      recentRequests.push(now);
+      personalizedTripRequests.set(clientKey, recentRequests);
+    }
     return dispatch('recommendations');
   }
 
@@ -160,7 +177,7 @@ export function handleGatewayRequest(
 
 const server = http.createServer((req, res) => handleGatewayRequest(req, res));
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   server.listen(PORT, () => {
     logger.info(`LocalDepth API Gateway running on port ${PORT}`);
     logger.info(`Forwarding routes:`);

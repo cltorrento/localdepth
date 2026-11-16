@@ -6,11 +6,14 @@
  */
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
+const envFile = path.join(rootDir, '.env');
+if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
 
 const services = [
   { name: 'auth-service', envVar: 'AUTH_SERVICE_PORT', port: 4001, script: 'services/auth-service/src/index.ts' },

@@ -104,7 +104,7 @@ export function handleSearchRequest(req: http.IncomingMessage, res: http.ServerR
 
 const server = http.createServer(handleSearchRequest);
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   server.listen(PORT, () => {
     logger.info(`Search service running on port ${PORT}`);
   });

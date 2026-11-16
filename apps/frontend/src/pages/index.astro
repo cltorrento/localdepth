@@ -1,94 +1,1791 @@
 ---
-const title = 'LocalDepth';
+import type { Destination } from '@localdepth/shared-types';
+import BrandMark from '../components/BrandMark.astro';
+import { getPostImage, posts } from '../data/posts';
+import { getCopy, getLocale, localeFlags, localeLabels, locales, localizedUrl, translateContent } from '../i18n';
+
+const locale = getLocale(Astro.url.searchParams.get('lang'));
+const copy = getCopy(locale);
+const title = copy.homeTitle;
+const apiUrl = import.meta.env.LOCALDEPTH_API_URL || 'http://localhost:4000/api';
+let localizationError = '';
+const exampleCards = posts.map((post) => ({
+  slug: post.slug,
+  destination: post.destination,
+  category: post.category,
+  title: post.guide.headline,
+  excerpt: post.excerpt,
+  image: getPostImage(post.image, 700),
+  alt: post.alt,
+  size: post.size,
+}));
+
+let publishedDestinations: Destination[] = [];
+try {
+  const languageQuery = locale === 'es' ? '' : `&lang=${locale}`;
+  const response = await fetch(`${apiUrl}/content/destinations?status=published${languageQuery}`);
+  if (!response.ok) throw new Error(`Content API returned HTTP ${response.status}`);
+  const payload = (await response.json()) as { success?: boolean; data?: Destination[]; error?: string };
+  if (!payload.success || !Array.isArray(payload.data)) {
+    throw new Error(payload.error || 'Content API returned an invalid destination list');
+  }
+  publishedDestinations = payload.data;
+} catch (error) {
+  if (locale !== 'es') {
+    localizationError = error instanceof Error ? error.message : copy.translationUnavailable;
+    Astro.response.status = 503;
+  }
+  console.error('Could not load published cities for the homepage:', error);
+}
+
+const normalizeDestinationName = (name: string) =>
+  name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+const managedDestinationByName = new Map(
+  publishedDestinations.map((destination) => [
+    normalizeDestinationName(destination.name),
+    destination,
+  ]),
+);
+const managedExampleCards = exampleCards.map((post) => {
+  const name = post.destination.split(',')[0] || '';
+  const managedDestination = managedDestinationByName.get(normalizeDestinationName(name));
+  return managedDestination
+    ? {
+        ...post,
+        slug: managedDestination.slug,
+        image: managedDestination.heroImageUrl || post.image,
+        alt: `${managedDestination.name}, ${managedDestination.country}`,
+      }
+    : post;
+});
+const exampleSlugs = new Set(managedExampleCards.map((post) => post.slug));
+const exampleDestinationNames = new Set(
+  managedExampleCards.map((post) => normalizeDestinationName(post.destination.split(',')[0] || '')),
+);
+const destinationCards = publishedDestinations
+  .filter((destination) => !exampleSlugs.has(destination.slug))
+  .filter((destination) => !exampleDestinationNames.has(normalizeDestinationName(destination.name)))
+  .map((destination) => {
+    const translation = locale === 'es' ? undefined : destination.translations?.[locale];
+    const name = translation?.name || destination.name;
+    const country = translation?.country || destination.country;
+    return {
+      slug: destination.slug,
+      destination: `${name}, ${country}`,
+      category: destination.type === 'city' ? copy.cityCategory : copy.destination,
+      title: translation?.guide?.headline || destination.guide?.headline || `${copy.discover} ${name}`,
+      excerpt: translation?.description || destination.description,
+      image: destination.heroImageUrl || '',
+      alt: `${name}, ${country}`,
+      size: 'landscape',
+    };
+  });
+const sourceHomepagePosts = [...managedExampleCards, ...destinationCards];
+let visiblePosts = sourceHomepagePosts;
+if (locale !== 'es' && !localizationError) {
+  try {
+    const translatedExamples = await translateContent(managedExampleCards, locale);
+    visiblePosts = [...translatedExamples, ...destinationCards];
+  } catch (error) {
+    localizationError = error instanceof Error ? error.message : copy.translationUnavailable;
+    Astro.response.status = 503;
+    console.error(`Could not translate the homepage to "${locale}":`, error);
+  }
+}
+const homepagePosts = sourceHomepagePosts;
+interface DestinationRatingSummary {
+  slug: string;
+  averageRating: number;
+  ratingCount: number;
+}
+let destinationRatings: DestinationRatingSummary[] = [];
+try {
+  const response = await fetch(`${apiUrl}/content/destinations/top-rated?limit=100`);
+  if (!response.ok) throw new Error(`Content API returned HTTP ${response.status}`);
+  const payload = (await response.json()) as { success?: boolean; data?: DestinationRatingSummary[]; error?: string };
+  if (!payload.success || !Array.isArray(payload.data)) {
+    throw new Error(payload.error || 'Content API returned an invalid top-rated destination list');
+  }
+  destinationRatings = payload.data;
+} catch (error) {
+  console.error('Could not load destination ratings for the homepage:', error);
+}
+const ratingBySlug = new Map(destinationRatings.map((rating) => [rating.slug, rating]));
+const sortedVisiblePosts = visiblePosts
+  .map((post, index) => ({ post, index, rating: ratingBySlug.get(post.slug)?.averageRating || 0 }))
+  .sort((a, b) => b.rating - a.rating || a.index - b.index)
+  .map(({ post }) => post);
+
+const continentByCountry: Record<string, string> = {
+  Chile: 'Sudamérica',
+  Egipto: 'África',
+  'El Salvador': 'Norteamérica',
+  España: 'Europa',
+  'Estados Unidos': 'Norteamérica',
+  Alemania: 'Europa',
+  Bélgica: 'Europa',
+  Grecia: 'Europa',
+  Honduras: 'Norteamérica',
+  Hungría: 'Europa',
+  India: 'Asia',
+  Indonesia: 'Asia',
+  Italia: 'Europa',
+  Japón: 'Asia',
+  Jordania: 'Asia',
+  Marruecos: 'África',
+  México: 'Norteamérica',
+  Nepal: 'Asia',
+  'Países Bajos': 'Europa',
+  Polonia: 'Europa',
+  Portugal: 'Europa',
+  'Reino Unido': 'Europa',
+  'República Checa': 'Europa',
+  Suiza: 'Europa',
+  Tanzania: 'África',
+};
+const continentOrder = ['Norteamérica', 'Europa', 'Asia', 'Sudamérica', 'África', 'Oceanía'];
+const continentLabels: Record<string, string> = { ...copy.continents };
+const getDestinationCountry = (post: (typeof homepagePosts)[number]) =>
+  post.destination.split(',').at(-1)?.trim() || '';
+const knownDestinationContinents = continentOrder
+  .map((continent) => ({
+    name: continentLabels[continent] || continent,
+    destinations: homepagePosts
+      .filter((post) => continentByCountry[getDestinationCountry(post)] === continent)
+      .map((post) => ({
+        name: visiblePosts.find((localizedPost) => localizedPost.slug === post.slug)?.destination.split(',')[0].trim()
+          || post.destination.split(',')[0].trim(),
+        slug: post.slug,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, locale)),
+  }))
+  .filter((continent) => continent.destinations.length > 0);
+const unclassifiedDestinations = homepagePosts
+  .filter((post) => !continentByCountry[getDestinationCountry(post)])
+  .map((post) => ({
+    name: visiblePosts.find((localizedPost) => localizedPost.slug === post.slug)?.destination.split(',')[0].trim()
+      || post.destination.split(',')[0].trim(),
+    slug: post.slug,
+  }))
+  .sort((a, b) => a.name.localeCompare(b.name, locale));
+const destinationMenuContinents = [
+  ...knownDestinationContinents,
+  ...(unclassifiedDestinations.length
+    ? [{ name: copy.otherDestinations, destinations: unclassifiedDestinations }]
+    : []),
+];
+
 ---
 
-<html lang="es">
+<!doctype html>
+<html lang={locale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="description"
+      content={copy.homeDescription}
+    />
+    <meta name="theme-color" content="#f5f3ec" />
     <title>{title}</title>
+    <link rel="preconnect" href="https://images.unsplash.com" />
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap');
+
       :root {
-        color-scheme: light dark;
-        --bg: #0f172a;
-        --panel: rgba(15, 23, 42, 0.8);
-        --text: #e2e8f0;
-        --muted: #94a3b8;
-        --accent: #10b981;
-        --accent-2: #38bdf8;
+        font-family: 'DM Sans', sans-serif;
+        color: #20231f;
+        background: #f5f3ec;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        --paper: #f5f3ec;
+        --ink: #20231f;
+        --muted: #686b62;
+        --green: #244f3d;
+        --lime: #d6ed72;
+        --line: rgba(32, 35, 31, 0.16);
+        --serif: 'Playfair Display', Georgia, serif;
       }
-      * { box-sizing: border-box; }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
       body {
         margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: radial-gradient(circle at top, #1e293b, var(--bg));
-        color: var(--text);
-        font-family: Inter, system-ui, sans-serif;
+        min-width: 320px;
       }
-      .card {
-        width: min(760px, 90vw);
-        background: var(--panel);
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 18px;
-        padding: 2rem;
-        box-shadow: 0 18px 50px rgba(15, 23, 42, 0.45);
+
+      a {
+        color: inherit;
+        text-decoration: none;
       }
-      h1 {
-        margin: 0 0 0.75rem;
-        font-size: clamp(2rem, 5vw, 3.5rem);
-        letter-spacing: -0.06em;
+
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
       }
-      p {
-        margin: 0.8rem 0;
-        color: var(--muted);
-        line-height: 1.6;
+
+      a:focus-visible {
+        outline: 3px solid #a0bf30;
+        outline-offset: 5px;
       }
-      .badge {
+
+      .announcement {
+        display: flex;
+        min-height: 34px;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        padding: 7px 16px;
+        background: var(--green);
+        color: #fff;
+        font-size: 11px;
+        letter-spacing: 0.035em;
+        text-align: center;
+      }
+
+      .announcement span {
+        color: var(--lime);
+      }
+
+      .site-header {
+        position: relative;
+        z-index: 20;
+        display: flex;
+        width: min(1320px, calc(100% - 72px));
+        height: 86px;
+        align-items: center;
+        justify-content: space-between;
+        margin: 0 auto;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand {
         display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
-        border: 1px solid rgba(16, 185, 129, 0.45);
-        background: rgba(16, 185, 129, 0.08);
-        color: #bbf7d0;
+        gap: 10px;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.055em;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--green);
+        color: var(--lime);
+        font-family: var(--serif);
+        font-size: 21px;
+        font-style: italic;
+      }
+
+      .nav-links {
+        display: flex;
+        height: 100%;
+        align-items: center;
+        gap: clamp(22px, 3vw, 42px);
+        color: #44483f;
+        font-size: 12px;
+      }
+
+      .language-switcher {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+
+      .language-switcher a {
+        display: grid;
+        width: 31px;
+        height: 31px;
+        place-items: center;
+        border: 1px solid transparent;
+        border-radius: 50%;
+        font-size: 16px;
+        line-height: 1;
+        transition: background 160ms ease, border-color 160ms ease;
+      }
+
+      .language-switcher a:hover,
+      .language-switcher a[aria-current='page'] {
+        border-color: rgba(36, 79, 61, 0.22);
+        background: #e9ecd9;
+      }
+
+      .language-switcher a:focus-visible {
+        outline: 3px solid #a0bf30;
+        outline-offset: 2px;
+      }
+
+      .translation-error {
+        padding: 10px 20px;
+        background: #fff3d6;
+        color: #704c0e;
+        font-size: 12px;
+        text-align: center;
+      }
+
+      .translation-error details {
+        display: inline-block;
+        margin-left: 5px;
+      }
+
+      .destination-menu {
+        position: relative;
+        align-self: stretch;
+        display: flex;
+        align-items: center;
+      }
+
+      .destination-menu summary {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        gap: 8px;
+        padding: 0;
+        list-style: none;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+
+      .destination-menu summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .destination-menu > summary:hover,
+      .destination-menu > summary:focus-visible,
+      .destination-menu[open] > summary {
+        color: var(--green);
+      }
+
+      .destination-menu > summary:focus-visible,
+      .continent-item summary:focus-visible,
+      .all-destinations-link:focus-visible {
+        outline: 3px solid #a0bf30;
+        outline-offset: 3px;
+      }
+
+      .destination-menu > summary::after {
+        width: 6px;
+        height: 6px;
+        border-right: 1px solid currentColor;
+        border-bottom: 1px solid currentColor;
+        content: '';
+        transform: translateY(-2px) rotate(45deg);
+        transition: transform 160ms ease;
+      }
+
+      .destination-menu[open] > summary::after {
+        transform: translateY(1px) rotate(225deg);
+      }
+
+      .destination-panel {
+        display: none;
+        position: absolute;
+        z-index: 30;
+        top: 100%;
+        left: 0;
+        width: 270px;
+        max-height: min(70vh, 520px);
+        overflow-y: auto;
+        padding: 8px 0;
+        background: #202523;
+        color: #fffefa;
+        box-shadow: 0 14px 30px rgba(15, 22, 17, 0.22);
+      }
+
+      .destination-menu[open] .destination-panel {
+        display: block;
+      }
+
+      .continent-list {
+      }
+
+      .continent-item {
+        position: relative;
+      }
+
+      .continent-item summary {
+        display: flex;
+        min-height: 62px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0 18px;
+        list-style: none;
+        cursor: pointer;
+        color: #fffefa;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        transition: background 140ms ease, color 140ms ease;
+      }
+
+      .continent-item summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .continent-item summary:hover,
+      .continent-item[open] > summary {
+        background: #2a302d;
+        color: var(--lime);
+      }
+
+      .continent-item summary::after {
+        width: 6px;
+        height: 6px;
+        flex: 0 0 auto;
+        border-top: 1px solid currentColor;
+        border-right: 1px solid currentColor;
+        content: '';
+        transform: rotate(45deg);
+      }
+
+      .continent-item[open] summary::after {
+        transform: rotate(135deg);
+      }
+
+      .continent-item ul {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0;
+        margin: 0;
+        padding: 0 0 8px;
+        list-style: none;
+        background: #2a302d;
+      }
+
+      .continent-column a {
+        display: flex;
+        min-height: 40px;
+        align-items: center;
+        padding: 6px 18px 6px 28px;
+        color: rgba(255, 254, 250, 0.88);
+        font-size: 12px;
+        letter-spacing: 0.02em;
+        line-height: 1.35;
+      }
+
+      .continent-column a:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fffefa;
+      }
+
+      .all-destinations-link {
+        display: flex;
+        min-height: 62px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 18px;
+        color: #fffefa;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        transition: background 140ms ease, color 140ms ease;
+      }
+
+      .all-destinations-link::after {
+        content: '›';
+        font-size: 17px;
+        letter-spacing: 0;
+      }
+
+      .all-destinations-link:hover {
+        background: #2a302d;
+        color: var(--lime);
+      }
+
+      .nav-links > a:not(.nav-cta):hover {
+        color: #648531;
+      }
+
+      .nav-cta,
+      .button-primary {
+        display: inline-flex;
+        min-height: 46px;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 0 19px;
+        border: 1px solid var(--ink);
         border-radius: 999px;
-        padding: 0.35rem 0.75rem;
-        font-size: 0.8rem;
+        background: var(--ink);
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        transition:
+          transform 180ms ease,
+          background 180ms ease,
+          color 180ms ease;
+      }
+
+      .nav-cta--planner .cta-short {
+        display: none;
+      }
+
+      .nav-cta:hover,
+      .button-primary:hover {
+        transform: translateY(-2px);
+        background: var(--green);
+      }
+
+      .arrow {
+        font-size: 16px;
+        line-height: 1;
+      }
+
+      .hero {
+        display: grid;
+        width: min(1320px, calc(100% - 72px));
+        min-height: min(690px, calc(100svh - 120px));
+        grid-template-columns: 0.91fr 1.09fr;
+        align-items: center;
+        gap: clamp(42px, 8vw, 120px);
+        margin: 0 auto;
+        padding: 68px 0 78px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--green);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #9fba44;
+        box-shadow: 0 0 0 4px rgba(159, 186, 68, 0.16);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      .hero h1 {
+        max-width: 580px;
+        margin: 23px 0 21px;
+        font-family: var(--serif);
+        font-size: clamp(56px, 7vw, 96px);
+        font-weight: 500;
+        letter-spacing: -0.075em;
+        line-height: 0.99;
+      }
+
+      .hero h1 em {
+        color: var(--green);
+        font-weight: 500;
+      }
+
+      .hero-copy {
+        max-width: 420px;
+        margin-bottom: 28px;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.8;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .text-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 12px;
         font-weight: 600;
       }
-      .links {
-        display: flex;
-        gap: 1rem;
-        flex-wrap: wrap;
-        margin-top: 1.5rem;
+
+      .text-link .arrow {
+        transition: transform 180ms ease;
       }
-      a {
+
+      .text-link:hover .arrow {
+        transform: translateX(4px);
+      }
+
+      .hero-note {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        margin-top: 46px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .avatar-stack {
+        display: flex;
+        padding-left: 4px;
+      }
+
+      .avatar-stack span {
+        display: grid;
+        width: 29px;
+        height: 29px;
+        place-items: center;
+        margin-left: -4px;
+        border: 2px solid var(--paper);
+        border-radius: 50%;
+        background: #d8aa86;
         color: white;
-        text-decoration: none;
-        border-radius: 10px;
-        padding: 0.7rem 1.1rem;
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        font-size: 9px;
         font-weight: 700;
+      }
+
+      .avatar-stack span:nth-child(2) {
+        background: #84977a;
+      }
+
+      .avatar-stack span:nth-child(3) {
+        background: #b97e63;
+      }
+
+      .hero-visual {
+        position: relative;
+        min-width: 0;
+        padding: 14px 20px 23px 0;
+      }
+
+      .hero-photo {
+        position: relative;
+        overflow: hidden;
+        height: clamp(400px, 47vw, 585px);
+        border-radius: 48% 48% 8px 8px;
+        background: #c5bda8;
+      }
+
+      .hero-photo::after {
+        position: absolute;
+        inset: 35% 0 0;
+        background: linear-gradient(transparent, rgba(16, 26, 21, 0.57));
+        content: '';
+      }
+
+      .hero-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .hero-photo img {
+        object-position: 52% center;
+        transition: transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+      }
+
+      .hero-visual:hover .hero-photo img {
+        transform: scale(1.035);
+      }
+
+      .photo-caption {
+        position: absolute;
+        z-index: 1;
+        right: 29px;
+        bottom: 27px;
+        left: 29px;
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        color: white;
+      }
+
+      .photo-caption small {
+        display: block;
+        margin-bottom: 7px;
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .photo-caption strong {
+        font-family: var(--serif);
+        font-size: 30px;
+        font-weight: 500;
+      }
+
+      .photo-caption .coordinates {
+        font-size: 10px;
+        letter-spacing: 0.04em;
+      }
+
+      .floating-card {
+        position: absolute;
+        z-index: 1;
+        top: 53%;
+        left: -54px;
+        width: 164px;
+        padding: 17px;
+        border: 1px solid rgba(32, 35, 31, 0.07);
+        border-radius: 10px;
+        background: #fffefa;
+        box-shadow: 0 14px 40px rgba(30, 38, 30, 0.13);
+        transform: rotate(-4deg);
+      }
+
+      .floating-card-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      .score {
+        margin: 13px 0 3px;
+        color: var(--green);
+        font-family: var(--serif);
+        font-size: 31px;
+        letter-spacing: -0.04em;
+      }
+
+      .score-caption {
+        color: var(--ink);
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      .floating-card p {
+        margin: 9px 0 0;
+        color: var(--muted);
+        font-size: 9px;
+        line-height: 1.5;
+      }
+
+      .photo-index {
+        position: absolute;
+        top: 42px;
+        right: -6px;
+        color: var(--muted);
+        font-family: var(--serif);
+        font-size: 12px;
+        writing-mode: vertical-rl;
+      }
+
+      .marquee {
+        overflow: hidden;
+        padding: 17px 0;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .marquee-track {
+        display: flex;
+        width: max-content;
+        align-items: center;
+        gap: 28px;
+        animation: drift 32s linear infinite;
+      }
+
+      .marquee-track span {
+        color: #65675e;
+        font-family: var(--serif);
+        font-size: 14px;
+        font-style: italic;
+        white-space: nowrap;
+      }
+
+      .marquee-track b {
+        color: #9bb649;
+        font-size: 13px;
+      }
+
+      @keyframes drift {
+        to {
+          transform: translateX(-50%);
+        }
+      }
+
+      .section-inner {
+        width: min(1160px, calc(100% - 72px));
+        margin: 0 auto;
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 30px;
+        margin-bottom: 38px;
+      }
+
+      .section-heading h2,
+      .manifesto h2 {
+        max-width: 620px;
+        margin: 14px 0 0;
+        font-family: var(--serif);
+        font-size: clamp(39px, 5vw, 62px);
+        font-weight: 500;
+        letter-spacing: -0.06em;
+        line-height: 1.08;
+      }
+
+      .section-heading h2 em {
+        color: var(--green);
+        font-weight: 500;
+      }
+
+      .section-heading > p {
+        max-width: 260px;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.75;
+      }
+
+      .journal {
+        padding: 0 0 120px;
+      }
+
+      .journal-heading {
+        align-items: end;
+        margin-bottom: 35px;
+      }
+
+      .journal-heading h2 {
+        max-width: 690px;
+      }
+
+      .journal-heading > p {
+        max-width: 290px;
+      }
+
+      .journal-wall {
+        columns: 4;
+        column-gap: 17px;
+      }
+
+      .post-card {
+        display: inline-block;
+        width: 100%;
+        margin: 0 0 17px;
+        overflow: hidden;
+        break-inside: avoid;
+        border: 1px solid rgba(32, 35, 31, 0.08);
+        border-radius: 8px;
+        background: #fffefa;
+        vertical-align: top;
+        transition:
+          transform 220ms ease,
+          box-shadow 220ms ease;
+      }
+
+      .post-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 14px 30px rgba(32, 35, 31, 0.1);
+      }
+
+      .post-image {
+        position: relative;
+        overflow: hidden;
+        background: #e2e0d6;
+      }
+
+      .post-image img {
+        display: block;
+        width: 100%;
+        object-fit: cover;
+        transition: transform 600ms cubic-bezier(0.2, 0.7, 0.2, 1);
+      }
+
+      .post-card:hover .post-image img {
+        transform: scale(1.045);
+      }
+
+      .post-card--portrait .post-image img {
+        aspect-ratio: 0.83;
+      }
+
+      .post-card--landscape .post-image img {
+        aspect-ratio: 1.3;
+      }
+
+      .post-card--square .post-image img {
+        aspect-ratio: 1;
+      }
+
+      .post-card--panorama .post-image img {
+        aspect-ratio: 1.55;
+      }
+
+      .post-number {
+        position: absolute;
+        right: 11px;
+        bottom: 11px;
+        display: grid;
+        width: 31px;
+        height: 31px;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        border-radius: 50%;
+        background: rgba(32, 35, 31, 0.28);
+        color: white;
+        font-size: 9px;
+        backdrop-filter: blur(8px);
+      }
+
+      .post-copy {
+        padding: 16px 16px 18px;
+      }
+
+      .post-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 10px;
+        color: var(--green);
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .post-meta span + span::before {
+        margin-right: 7px;
+        color: #a1a394;
+        content: '·';
+      }
+
+      .post-copy h3 {
+        margin-bottom: 8px;
+        font-family: var(--serif);
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: -0.025em;
+        line-height: 1.22;
+      }
+
+      .post-copy p {
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.7;
+      }
+
+      .sample-note {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 22px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .sample-note span {
+        display: grid;
+        width: 19px;
+        height: 19px;
+        place-items: center;
+        border-radius: 50%;
+        background: #e8ebd9;
+        color: var(--green);
+        font-family: var(--serif);
+        font-size: 12px;
+        font-style: italic;
+      }
+
+      .manifesto {
+        position: relative;
+        overflow: hidden;
+        background: var(--green);
+        color: white;
+      }
+
+      .manifesto::after {
+        position: absolute;
+        top: -135px;
+        right: -95px;
+        width: 370px;
+        height: 370px;
+        border: 1px solid rgba(214, 237, 114, 0.24);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 36px rgba(214, 237, 114, 0.035),
+          0 0 0 72px rgba(214, 237, 114, 0.035);
+        content: '';
+      }
+
+      .manifesto-inner {
+        display: grid;
+        width: min(1160px, calc(100% - 72px));
+        grid-template-columns: 1fr 0.58fr;
+        align-items: center;
+        gap: 70px;
+        margin: 0 auto;
+        padding: 94px 0;
+      }
+
+      .manifesto .eyebrow {
+        color: var(--lime);
+      }
+
+      .manifesto h2 {
+        max-width: 690px;
+        margin-bottom: 16px;
+      }
+
+      .manifesto-copy {
+        max-width: 530px;
+        margin-bottom: 0;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+        line-height: 1.8;
+      }
+
+      .manifesto-aside {
+        position: relative;
+        z-index: 1;
+        padding: 24px 0 24px 24px;
+        border-left: 1px solid rgba(255, 255, 255, 0.24);
+      }
+
+      .manifesto-aside strong {
+        display: block;
+        margin-bottom: 9px;
+        color: var(--lime);
+        font-family: var(--serif);
+        font-size: 24px;
+        font-weight: 500;
+      }
+
+      .manifesto-aside p {
+        max-width: 250px;
+        margin-bottom: 20px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 11px;
+        line-height: 1.75;
+      }
+
+      .manifesto .button-primary {
+        border-color: var(--lime);
+        background: var(--lime);
+        color: var(--ink);
+      }
+
+      .manifesto .button-primary:hover {
+        border-color: white;
+        background: white;
+      }
+
+      .about-story {
+        padding: 110px 0;
+        background: #e9ecdf;
+      }
+
+      .about-story-inner {
+        display: grid;
+        width: min(1160px, calc(100% - 72px));
+        grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.7fr);
+        align-items: center;
+        gap: clamp(44px, 9vw, 130px);
+        margin: 0 auto;
+      }
+
+      .about-story .eyebrow {
+        color: var(--green);
+      }
+
+      .about-story h2 {
+        max-width: 670px;
+        margin: 16px 0 20px;
+        font-family: var(--serif);
+        font-size: clamp(38px, 5vw, 61px);
+        font-weight: 500;
+        letter-spacing: -0.06em;
+        line-height: 1.06;
+      }
+
+      .about-story-copy {
+        max-width: 620px;
+        color: #555a50;
+        font-size: 13px;
+        line-height: 1.85;
+      }
+
+      .about-story-copy p + p {
+        margin-top: 14px;
+      }
+
+      .about-story .button-primary {
+        margin-top: 12px;
+      }
+
+      .about-note {
+        position: relative;
+        display: flex;
+        min-height: 285px;
+        flex-direction: column;
+        justify-content: flex-end;
+        overflow: hidden;
+        padding: 30px;
+        border-radius: 48% 48% 8px 8px;
+        background: var(--green);
+        color: #fffefa;
+      }
+
+      .about-note::before,
+      .about-note::after {
+        position: absolute;
+        top: -80px;
+        right: -35px;
+        width: 260px;
+        height: 260px;
+        border: 1px solid rgba(214, 237, 114, 0.32);
+        border-radius: 50%;
+        content: '';
+      }
+
+      .about-note::after {
+        top: -46px;
+        right: -1px;
+        width: 190px;
+        height: 190px;
+        border-color: rgba(214, 237, 114, 0.22);
+      }
+
+      .about-note .brand-mark {
+        position: absolute;
+        top: 30px;
+        left: 30px;
+        width: 52px;
+        height: 52px;
+      }
+
+      .about-note strong,
+      .about-note p {
+        position: relative;
+        z-index: 1;
+      }
+
+      .about-note strong {
+        max-width: 240px;
+        margin-bottom: 10px;
+        color: var(--lime);
+        font-family: var(--serif);
+        font-size: 27px;
+        font-weight: 500;
+        line-height: 1.2;
+      }
+
+      .about-note p {
+        max-width: 270px;
+        margin: 0;
+        color: rgba(255, 254, 250, 0.76);
+        font-size: 11px;
+        line-height: 1.75;
+      }
+
+      .site-footer {
+        display: flex;
+        width: min(1320px, calc(100% - 72px));
+        min-height: 105px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        margin: 0 auto;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .footer-brand {
+        color: var(--ink);
+      }
+
+      .footer-links {
+        display: flex;
+        gap: 22px;
+      }
+
+      .footer-links a:hover {
+        color: var(--green);
+      }
+
+      @media (min-width: 1500px) {
+        .hero {
+          min-height: 760px;
+        }
+      }
+
+      @media (max-width: 820px) {
+        .site-header,
+        .hero,
+        .section-inner,
+        .manifesto-inner,
+        .about-story-inner,
+        .site-footer {
+          width: min(100% - 44px, 650px);
+        }
+
+        .site-header {
+          height: 72px;
+        }
+
+        .nav-links {
+          gap: 18px;
+        }
+
+        .hero {
+          min-height: 0;
+          grid-template-columns: 1fr 0.9fr;
+          gap: 22px;
+          padding: 65px 0 68px;
+        }
+
+        .hero h1 {
+          font-size: clamp(52px, 9vw, 76px);
+        }
+
+        .hero-photo {
+          height: 450px;
+        }
+
+        .floating-card {
+          left: -22px;
+          width: 142px;
+          padding: 14px;
+        }
+
+        .section-heading > p {
+          max-width: 220px;
+        }
+
+        .journal-wall {
+          columns: 3;
+        }
+
+        .manifesto-inner {
+          grid-template-columns: 1fr 0.72fr;
+          gap: 32px;
+          padding: 78px 0;
+        }
+
+        .about-story {
+          padding: 78px 0;
+        }
+
+        .about-story-inner {
+          grid-template-columns: 1fr 0.72fr;
+          gap: 32px;
+        }
+      }
+
+      @media (max-width: 600px) {
+        .announcement {
+          min-height: 32px;
+          font-size: 9px;
+        }
+
+        .site-header,
+        .hero,
+        .section-inner,
+        .manifesto-inner,
+        .about-story-inner,
+        .site-footer {
+          width: calc(100% - 40px);
+        }
+
+        .site-header {
+          height: 68px;
+        }
+
+        .brand {
+          font-size: 16px;
+        }
+
+        .nav-links {
+          gap: 8px;
+        }
+
+        .brand > span:last-child {
+          display: none;
+        }
+
+        .nav-cta--planner {
+          min-height: 38px;
+          padding: 0 9px;
+          font-size: 9px;
+        }
+
+        .nav-cta--planner .cta-full {
+          display: none;
+        }
+
+        .nav-cta--planner .cta-short {
+          display: inline;
+        }
+
+        .language-switcher {
+          gap: 0;
+        }
+
+        .language-switcher a {
+          width: 27px;
+          height: 30px;
+          font-size: 15px;
+        }
+
+        .destination-panel {
+          width: min(270px, calc(100vw - 24px));
+        }
+
+        .destination-panel-footer {
+          gap: 12px;
+          margin-top: 21px;
+          padding-top: 17px;
+        }
+
+        .hero {
+          grid-template-columns: 1fr;
+          gap: 38px;
+          padding: 56px 0 54px;
+        }
+
+        .hero h1 {
+          max-width: 470px;
+          margin-top: 19px;
+          font-size: clamp(59px, 15vw, 84px);
+        }
+
+        .hero-copy {
+          max-width: 440px;
+          font-size: 13px;
+        }
+
+        .hero-note {
+          margin-top: 29px;
+        }
+
+        .hero-visual {
+          padding: 5px 13px 12px 0;
+        }
+
+        .hero-photo {
+          height: clamp(360px, 105vw, 490px);
+          border-radius: 47% 47% 7px 7px;
+        }
+
+        .floating-card {
+          top: 57%;
+          left: -7px;
+          width: 137px;
+        }
+
+        .photo-index {
+          right: -1px;
+        }
+
+        .section-heading {
+          display: block;
+          margin-bottom: 25px;
+        }
+
+        .section-heading h2,
+        .manifesto h2 {
+          font-size: clamp(39px, 11vw, 53px);
+        }
+
+        .section-heading > p {
+          max-width: 330px;
+          margin-top: 15px;
+        }
+
+        .journal {
+          padding-bottom: 82px;
+        }
+
+        .journal-heading {
+          margin-bottom: 24px;
+        }
+
+        .journal-wall {
+          columns: 2;
+          column-gap: 11px;
+        }
+
+        .post-card {
+          margin-bottom: 11px;
+        }
+
+        .post-copy {
+          padding: 12px 11px 14px;
+        }
+
+        .post-copy h3 {
+          font-size: 17px;
+        }
+
+        .post-copy p {
+          font-size: 9px;
+        }
+
+        .post-meta {
+          gap: 5px;
+          font-size: 8px;
+        }
+
+        .post-meta span + span::before {
+          margin-right: 5px;
+        }
+
+        .sample-note {
+          align-items: flex-start;
+          line-height: 1.55;
+        }
+
+        .manifesto-inner {
+          grid-template-columns: 1fr;
+          gap: 29px;
+          padding: 67px 0;
+        }
+
+        .about-story {
+          padding: 67px 0;
+        }
+
+        .about-story-inner {
+          grid-template-columns: 1fr;
+          gap: 28px;
+        }
+
+        .about-note {
+          min-height: 240px;
+        }
+
+        .manifesto-aside {
+          padding-top: 0;
+          padding-bottom: 0;
+        }
+
+        .site-footer {
+          min-height: 120px;
+          flex-wrap: wrap;
+          gap: 5px 20px;
+          padding: 21px 0;
+        }
+
+        .site-footer > span {
+          width: 100%;
+          order: 1;
+        }
+
+        .footer-links {
+          gap: 14px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+
+      }
+
+      @media (max-width: 360px) {
+        .site-header {
+          width: calc(100% - 24px);
+        }
+
+        .nav-links {
+          gap: 5px;
+        }
+
+        .language-switcher a {
+          width: 24px;
+          height: 28px;
+          font-size: 14px;
+        }
       }
     </style>
   </head>
   <body>
-    <main class="card">
-      <div class="badge">LocalDepth • Travel Copilot</div>
-      <h1>Viajes más locales, más inteligentes.</h1>
-      <p>
-        Este es el frontend público de LocalDepth. La app está levantada correctamente y lista
-        para conectarse con el gateway del backend en <strong>http://localhost:4000</strong>.
-      </p>
-      <p>
-        El panel administrativo queda en <strong>http://localhost:3001</strong> y la infraestructura
-        auxiliar en Docker está funcionando en los puertos principales del proyecto.
-      </p>
-      <div class="links">
-        <a href="http://localhost:3001">Abrir Admin</a>
-        <a href="http://localhost:4000/health">Comprobar API</a>
+    <div class="announcement">
+        <span>✳</span> {copy.announcement}
+    </div>
+
+    <header class="site-header">
+        <a class="brand" href={localizedUrl('/#inicio', locale)} aria-label={`LocalDepth, ${copy.home.toLowerCase()}`}>
+          <BrandMark size={34} />
+          <span>localdepth</span>
+        </a>
+        <nav class="nav-links" aria-label={copy.mainNavigation}>
+          {!localizationError && (
+          <details class="destination-menu">
+            <summary aria-label={copy.destinations} title={copy.destinations}>
+              <span>{copy.destinations}</span>
+            </summary>
+            <div class="destination-panel">
+              <div class="continent-list">
+                {destinationMenuContinents.map((continent) => (
+                  <details class="continent-item">
+                    <summary>
+                      <span>{continent.name}</span>
+                    </summary>
+                    <ul>
+                      {continent.destinations.map((destination) => (
+                        <li class="continent-column">
+                          <a href={localizedUrl(`/viajes/${destination.slug}/`, locale)}>{destination.name}</a>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ))}
+              </div>
+              <a class="all-destinations-link" href={localizedUrl('/#cuaderno', locale)}>{copy.allDestinations}</a>
+            </div>
+          </details>
+          )}
+        <a class="nav-about" href={localizedUrl('/#quienes-somos', locale)}>{copy.aboutUs}</a>
+        <a class="nav-cta nav-cta--planner" href={localizedUrl('/planifica/', locale)}>
+          <span class="cta-full">{copy.planTrip}</span>
+          <span class="cta-short">{copy.planTripShort}</span>
+          <span class="arrow" aria-hidden="true">↗</span>
+        </a>
+        <nav class="language-switcher" aria-label={localeLabels[locale]}>
+          {locales.map((language) => (
+            <a
+              href={localizedUrl(Astro.url.pathname, language)}
+              aria-label={localeLabels[language]}
+              aria-current={language === locale ? 'page' : undefined}
+              title={localeLabels[language]}
+            >{localeFlags[language]}</a>
+          ))}
+        </nav>
+      </nav>
+    </header>
+
+    {localizationError ? (
+      <main class="translation-error" role="alert">
+        <h1>{copy.translationUnavailable}</h1>
+        <p>{localizationError}</p>
+        <a href={localizedUrl('/', 'es')}>{copy.errorHome}</a>
+      </main>
+    ) : (
+    <main id="inicio">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-content">
+          <div class="eyebrow"><span class="eyebrow-dot"></span> {copy.travelDifferently}</div>
+          <h1 id="hero-title">{copy.heroFirst}<br />{copy.heroSecond} <em>{copy.heroEmphasis}</em></h1>
+          <p class="hero-copy">
+            {copy.heroDescription}
+          </p>
+          <div class="hero-actions">
+            <a class="button-primary" href="#descubre">
+              {copy.findNextPlace} <span class="arrow" aria-hidden="true">↗</span>
+            </a>
+            <a class="text-link" href="#filosofia">
+              {copy.howWeTravel} <span class="arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+          <div class="hero-note">
+            <div class="avatar-stack" aria-hidden="true">
+              <span>LC</span><span>MG</span><span>AR</span>
+            </div>
+            <span>{copy.heroNote}</span>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="hero-photo">
+            <img
+              src="https://images.unsplash.com/photo-1513581166391-887a96ddeafd?auto=format&fit=crop&w=1400&q=90"
+              alt={locale === 'es' ? 'Atardecer sobre los tejados y la arquitectura histórica de Milán' : 'Sunset over Milan’s rooftops and historic architecture'}
+              fetchpriority="high"
+            />
+            <div class="photo-caption">
+              <div>
+                <small>{copy.cityWithoutScript}</small>
+                <strong>Milán, Italia</strong>
+              </div>
+              <span class="coordinates">45° 27' N&nbsp; 9° 11' E</span>
+            </div>
+          </div>
+          <div class="floating-card" aria-label="Puntuación local: 9,5 de 10">
+            <div class="floating-card-top"><span>LOCALDEPTH SCORE</span><span>✳</span></div>
+            <div class="score">9.5<span style="font-size: 14px">/10</span></div>
+            <div class="score-caption">{copy.scoreLabel}</div>
+            <p>{copy.scoreDescription}</p>
+          </div>
+          <span class="photo-index">001 — NORTE DE ITALIA</span>
+        </div>
+      </section>
+
+      <div class="marquee" aria-label={copy.marqueeLabel}>
+        <div class="marquee-track" aria-hidden="true">
+          {[0, 1].map(() => (
+            <>
+              {copy.marquee.map((item) => <><span>{item}</span><b>✳</b></>)}
+            </>
+          ))}
+        </div>
       </div>
+
+      <section class="about-story" id="descubre" aria-labelledby="about-title">
+        <div class="about-story-inner" id="quienes-somos">
+          <div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span> {copy.aboutLabel}</div>
+            <h2 id="about-title">{copy.aboutTitle}</h2>
+            <div class="about-story-copy">
+              <p>{copy.aboutDescription}</p>
+              <p>{copy.aboutSecondParagraph}</p>
+            </div>
+            <a class="button-primary" href="#cuaderno">
+              {copy.aboutLink} <span class="arrow" aria-hidden="true">↗</span>
+            </a>
+          </div>
+          <aside class="about-note">
+            <BrandMark size={52} />
+            <strong>{copy.aboutNoteTitle}</strong>
+            <p>{copy.aboutNote}</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="journal" id="cuaderno" aria-labelledby="journal-title">
+        <div class="section-inner">
+          <div class="section-heading journal-heading">
+            <div>
+              <div class="eyebrow"><span class="eyebrow-dot"></span> {copy.journalLabel}</div>
+              <h2 id="journal-title">{copy.journalTitle(homepagePosts.length)}</h2>
+            </div>
+            <p>{copy.journalIntro}</p>
+          </div>
+          <div class="journal-wall">
+            {sortedVisiblePosts.map((post, index) => (
+              <a
+                class:list={['post-card', `post-card--${post.size}`]}
+                href={localizedUrl(`/viajes/${post.slug}/`, locale)}
+                aria-label={copy.readGuide(post.title)}
+              >
+                <div class="post-image">
+                  <img
+                    src={post.image}
+                    alt={post.alt}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <span class="post-number">{String(index + 1).padStart(2, '0')}</span>
+                </div>
+                <div class="post-copy">
+                  <div class="post-meta"><span>{post.destination}</span><span>{post.category}</span></div>
+                  <h3>{post.title}</h3>
+                  <p>{post.excerpt}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+          <p class="sample-note">
+            <span>i</span> {copy.sampleNote}
+          </p>
+        </div>
+      </section>
+
+      <section class="manifesto" id="filosofia" aria-labelledby="manifesto-title">
+        <div class="manifesto-inner">
+          <div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span> {copy.manifestoLabel}</div>
+            <h2 id="manifesto-title">{copy.manifestoTitle}</h2>
+            <p class="manifesto-copy">
+              {copy.manifestoDescription}
+            </p>
+          </div>
+          <aside class="manifesto-aside">
+            <strong>{copy.manifestoAsideTitle}</strong>
+            <p>{copy.manifestoAside}</p>
+            <a class="button-primary" href="#descubre">
+              {copy.recommendations} <span class="arrow" aria-hidden="true">↗</span>
+            </a>
+          </aside>
+        </div>
+      </section>
+
     </main>
+    )}
+
+    <script>
+      const destinationMenu = document.querySelector<HTMLDetailsElement>('.destination-menu');
+      const menuSummary = destinationMenu?.querySelector<HTMLElement>(':scope > summary');
+
+      const closeMenu = (restoreFocus = false) => {
+        if (!destinationMenu?.open) return;
+        destinationMenu.open = false;
+        if (restoreFocus) menuSummary?.focus();
+      };
+
+      document.addEventListener('click', (event) => {
+        if (destinationMenu?.open && event.target instanceof Node && !destinationMenu.contains(event.target)) {
+          closeMenu();
+        }
+      });
+
+      destinationMenu?.querySelectorAll<HTMLAnchorElement>('.destination-panel a').forEach((link) => {
+        link.addEventListener('click', () => closeMenu());
+      });
+      destinationMenu?.querySelectorAll<HTMLDetailsElement>('.continent-item').forEach((continent) => {
+        continent.addEventListener('toggle', () => {
+          if (!continent.open) return;
+          destinationMenu.querySelectorAll<HTMLDetailsElement>('.continent-item').forEach((otherContinent) => {
+            if (otherContinent !== continent) otherContinent.open = false;
+          });
+        });
+      });
+
+      destinationMenu?.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'mouse') destinationMenu.open = true;
+      });
+      destinationMenu?.addEventListener('pointerleave', (event) => {
+        if (event.pointerType === 'mouse') closeMenu();
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (!destinationMenu?.open) return;
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeMenu(true);
+        }
+      });
+    </script>
+
+    <footer class="site-footer">
+      <a class="brand footer-brand" href={localizedUrl('/#inicio', locale)}>
+        <BrandMark size={34} /><span>localdepth</span>
+      </a>
+      <span>{copy.footerTagline} © 2026 LocalDepth</span>
+      <nav class="footer-links" aria-label={copy.discover}>
+        <a href="#descubre">{copy.discover}</a>
+        <a href={`${apiUrl.replace(/\/api\/?$/, '')}/health`}>{copy.journeyStatus}</a>
+      </nav>
+    </footer>
   </body>
 </html>

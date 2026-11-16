@@ -277,7 +277,7 @@ export async function handleAuthRequest(req: http.IncomingMessage, res: http.Ser
 
 const server = http.createServer(handleAuthRequest);
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   server.listen(PORT, () => {
     logger.info(`Auth service running on port ${PORT}`);
   });

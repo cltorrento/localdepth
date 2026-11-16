@@ -1,0 +1,1090 @@
+---
+import type { Destination } from '@localdepth/shared-types';
+import BrandMark from '../components/BrandMark.astro';
+import { getLocale, localeFlags, localeLabels, locales, localizedUrl } from '../i18n';
+
+const locale = getLocale(Astro.url.searchParams.get('lang'));
+const apiUrl = import.meta.env.LOCALDEPTH_API_URL || 'http://localhost:4000/api';
+const fallbackTripImage = 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1000&q=85';
+const copy = {
+  es: {
+    title: 'Planifica tu viaje · LocalDepth',
+    intro: 'No planees un viaje. Diseña cómo quieres sentirlo.',
+    description: 'Unos pocos detalles bastan para convertir tus ganas de viajar en días llenos de lugares con alma, sabores locales y tiempo para disfrutar.',
+    eyebrow: 'Tu próxima historia empieza aquí',
+    stepDestination: 'El destino',
+    stepExperience: 'Tu manera de viajar',
+    stepDelivery: 'Recibe tu viaje',
+    stepOneTitle: 'Primero, el lugar.',
+    stepOneDescription: 'Elige el destino y el tiempo que tienes. Nosotros encontramos el ritmo.',
+    stepTwoTitle: 'Ahora, lo que te mueve.',
+    stepTwoDescription: 'Cuéntanos qué te hace conectar con un lugar. No hay una forma incorrecta de viajar.',
+    stepThreeTitle: 'Ya casi estás allí.',
+    stepThreeDescription: 'Te enviaremos una guía pensada para ti, creada con lugares reales seleccionados por nuestros editores.',
+    nextStep: 'Seguir descubriendo',
+    backStep: 'Volver',
+    previewLabel: 'El viaje va tomando forma',
+    previewPrompt: 'Tu próxima historia',
+    previewEmptyDestination: 'Elige un destino para empezar a imaginarlo.',
+    previewEmptyDate: 'Cuando tú quieras',
+    previewDays: 'días para perderte',
+    previewBudget: 'presupuesto diario',
+    previewInterests: 'Lo que te mueve',
+    previewImageAlt: 'Paisaje inspirador para un viaje inolvidable',
+    previewFooter: 'Hecho con mirada local. Pensado para ti.',
+    back: 'Volver al inicio',
+    destination: '¿A dónde quieres ir?',
+    destinationPlaceholder: 'Elige un destino publicado',
+    noDestinations: 'No hay destinos publicados disponibles para planificar ahora.',
+    travelDate: 'Fecha de llegada (opcional)',
+    days: '¿Cuántos días?',
+    budget: 'Presupuesto diario aproximado',
+    interests: '¿Qué te gustaría vivir?',
+    food: 'Comida local',
+    culture: 'Cultura',
+    nature: 'Naturaleza',
+    architecture: 'Arquitectura',
+    nightlife: 'Vida nocturna',
+    hiddenGems: 'Lugares poco conocidos',
+    pace: '¿A qué ritmo viajas?',
+    relaxed: 'Sin prisa',
+    balanced: 'Un poco de todo',
+    intense: 'Quiero aprovechar el día',
+    avoidCrowds: 'Prefiero evitar las multitudes',
+    email: '¿A qué correo te la enviamos?',
+    emailPlaceholder: 'tu@correo.com',
+    itineraryConsent: 'Acepto que LocalDepth use mi correo y preferencias para guardar mi solicitud y enviarme este itinerario. Los datos de la solicitud se conservan durante 12 meses.',
+    privacyNote: 'La suscripción a sugerencias por correo es opcional y no afecta a la solicitud del itinerario.',
+    newsletter: 'También quiero suscribirme para recibir ideas e itinerarios sugeridos por correo.',
+    submit: 'Preparar mi itinerario',
+    submitting: 'Preparando tu viaje…',
+    required: 'Completa los campos obligatorios y selecciona al menos un interés.',
+    loadingDestinations: 'No pudimos cargar los destinos publicados. Inténtalo de nuevo más tarde.',
+    successTitle: 'Tu viaje empieza aquí',
+    sent: '¡Listo! Enviamos tu itinerario por correo.',
+    emailFailed: 'La solicitud quedó guardada, pero no se pudo enviar el correo.',
+    emailSentStatusUnknown: 'El correo fue enviado, pero no se pudo actualizar el estado de la solicitud.',
+    requestFailed: 'No se pudo preparar tu itinerario. Inténtalo de nuevo.',
+    guideUnavailable: 'Ese destino no tiene una guía publicada completa para preparar el itinerario.',
+    serviceUnavailable: 'No se pudo guardar o enviar el itinerario. Comprueba los servicios y vuelve a intentarlo más tarde.',
+    rateLimited: 'Has alcanzado el límite de solicitudes. Inténtalo más tarde.',
+    day: 'Día',
+    estimatedBudget: 'Presupuesto estimado',
+    stops: 'paradas',
+    timeOfDay: { morning: 'mañana', lunch: 'comida', afternoon: 'tarde', evening: 'noche', night: 'noche' },
+    unavailableTranslation: 'No se pudo cargar esta página en el idioma elegido.',
+  },
+  en: {
+    title: 'Plan your trip · LocalDepth',
+    intro: 'Don’t just plan a trip. Design how you want to feel.',
+    description: 'A few details are all it takes to turn your travel daydreams into days filled with soulful places, local flavors, and room to slow down.',
+    eyebrow: 'Your next story starts here',
+    stepDestination: 'The destination',
+    stepExperience: 'Your kind of trip',
+    stepDelivery: 'Get your trip',
+    stepOneTitle: 'First, the place.',
+    stepOneDescription: 'Choose where and how long. We’ll help find the rhythm.',
+    stepTwoTitle: 'Now, what moves you.',
+    stepTwoDescription: 'Tell us how you connect with a place. There is no wrong way to travel.',
+    stepThreeTitle: 'You’re almost there.',
+    stepThreeDescription: 'We’ll send a guide made for you, with real places handpicked by our editors.',
+    nextStep: 'Keep discovering',
+    backStep: 'Go back',
+    previewLabel: 'Your trip is taking shape',
+    previewPrompt: 'Your next story',
+    previewEmptyDestination: 'Choose a destination to start imagining it.',
+    previewEmptyDate: 'Whenever you’re ready',
+    previewDays: 'days to wander',
+    previewBudget: 'daily budget',
+    previewInterests: 'What moves you',
+    previewImageAlt: 'An inspiring landscape for an unforgettable trip',
+    previewFooter: 'Local perspective. Made for you.',
+    back: 'Back to home',
+    destination: 'Where would you like to go?',
+    destinationPlaceholder: 'Choose a published destination',
+    noDestinations: 'There are no published destinations available for planning right now.',
+    travelDate: 'Arrival date (optional)',
+    days: 'How many days?',
+    budget: 'Approximate daily budget',
+    interests: 'What would you like to experience?',
+    food: 'Local food',
+    culture: 'Culture',
+    nature: 'Nature',
+    architecture: 'Architecture',
+    nightlife: 'Nightlife',
+    hiddenGems: 'Hidden gems',
+    pace: 'What is your travel pace?',
+    relaxed: 'Unhurried',
+    balanced: 'A bit of everything',
+    intense: 'Make the most of each day',
+    avoidCrowds: 'I prefer to avoid crowds',
+    email: 'Where should we send it?',
+    emailPlaceholder: 'you@email.com',
+    itineraryConsent: 'I agree that LocalDepth may use my email and preferences to save my request and send this itinerary. Request data is kept for 12 months.',
+    privacyNote: 'Receiving travel ideas by email is optional and does not affect your itinerary request.',
+    newsletter: 'I would also like to subscribe to travel ideas and suggested itineraries by email.',
+    submit: 'Create my itinerary',
+    submitting: 'Planning your trip…',
+    required: 'Complete the required fields and select at least one interest.',
+    loadingDestinations: 'We could not load published destinations. Please try again later.',
+    successTitle: 'Your trip starts here',
+    sent: 'Done! Your itinerary has been emailed to you.',
+    emailFailed: 'Your request was saved, but the email could not be sent.',
+    emailSentStatusUnknown: 'The email was sent, but the request status could not be updated.',
+    requestFailed: 'We could not create your itinerary. Please try again.',
+    guideUnavailable: 'This destination does not have a complete published guide for an itinerary.',
+    serviceUnavailable: 'We could not save or send your itinerary. Please try again later.',
+    rateLimited: 'You have reached the request limit. Please try again later.',
+    day: 'Day',
+    estimatedBudget: 'Estimated budget',
+    stops: 'stops',
+    timeOfDay: { morning: 'morning', lunch: 'lunch', afternoon: 'afternoon', evening: 'evening', night: 'night' },
+    unavailableTranslation: 'This page could not be loaded in the selected language.',
+  },
+  it: {
+    title: 'Organizza il tuo viaggio · LocalDepth',
+    intro: 'Non pianificare un viaggio. Decidi come vuoi sentirti.',
+    description: 'Bastano pochi dettagli per trasformare la voglia di partire in giornate piene di luoghi autentici, sapori locali e tempo per goderti tutto.',
+    eyebrow: 'La tua prossima storia comincia qui',
+    stepDestination: 'La destinazione',
+    stepExperience: 'Il tuo modo di viaggiare',
+    stepDelivery: 'Ricevi il viaggio',
+    stepOneTitle: 'Per prima, la destinazione.',
+    stepOneDescription: 'Scegli dove e per quanto tempo. Al ritmo pensiamo insieme.',
+    stepTwoTitle: 'Ora, ciò che ti emoziona.',
+    stepTwoDescription: 'Raccontaci cosa ti fa entrare in sintonia con un luogo. Non c’è un modo giusto di viaggiare.',
+    stepThreeTitle: 'Ci sei quasi.',
+    stepThreeDescription: 'Ti invieremo una guida su misura, con luoghi reali scelti dai nostri redattori.',
+    nextStep: 'Continua a scoprire',
+    backStep: 'Indietro',
+    previewLabel: 'Il viaggio prende forma',
+    previewPrompt: 'La tua prossima storia',
+    previewEmptyDestination: 'Scegli una destinazione e inizia a immaginarla.',
+    previewEmptyDate: 'Quando vuoi',
+    previewDays: 'giorni per perderti',
+    previewBudget: 'budget giornaliero',
+    previewInterests: 'Ciò che ti emoziona',
+    previewImageAlt: 'Un paesaggio ispiratore per un viaggio indimenticabile',
+    previewFooter: 'Sguardo locale. Pensato per te.',
+    back: 'Torna alla home',
+    destination: 'Dove vuoi andare?',
+    destinationPlaceholder: 'Scegli una destinazione pubblicata',
+    noDestinations: 'Al momento non ci sono destinazioni pubblicate disponibili.',
+    travelDate: 'Data di arrivo (facoltativa)',
+    days: 'Quanti giorni?',
+    budget: 'Budget giornaliero indicativo',
+    interests: 'Cosa vuoi scoprire?',
+    food: 'Cucina locale',
+    culture: 'Cultura',
+    nature: 'Natura',
+    architecture: 'Architettura',
+    nightlife: 'Vita notturna',
+    hiddenGems: 'Luoghi meno conosciuti',
+    pace: 'Che ritmo preferisci?',
+    relaxed: 'Senza fretta',
+    balanced: 'Un po’ di tutto',
+    intense: 'Voglio sfruttare ogni giornata',
+    avoidCrowds: 'Preferisco evitare la folla',
+    email: 'Dove ti inviamo la guida?',
+    emailPlaceholder: 'tu@email.com',
+    itineraryConsent: 'Acconsento all’uso della mia email e delle mie preferenze per salvare la richiesta e inviarmi l’itinerario. I dati saranno conservati per 12 mesi.',
+    privacyNote: 'La ricezione di idee di viaggio via email è facoltativa e non influisce sulla richiesta dell’itinerario.',
+    newsletter: 'Vorrei iscrivermi anche per ricevere idee di viaggio e itinerari suggeriti via email.',
+    submit: 'Crea il mio itinerario',
+    submitting: 'Stiamo organizzando il viaggio…',
+    required: 'Compila i campi obbligatori e seleziona almeno un interesse.',
+    loadingDestinations: 'Non è stato possibile caricare le destinazioni. Riprova più tardi.',
+    successTitle: 'Il tuo viaggio comincia qui',
+    sent: 'Fatto! Ti abbiamo inviato l’itinerario via email.',
+    emailFailed: 'La richiesta è stata salvata, ma non è stato possibile inviare l’email.',
+    emailSentStatusUnknown: 'L’email è stata inviata, ma non è stato possibile aggiornare lo stato della richiesta.',
+    requestFailed: 'Non è stato possibile creare l’itinerario. Riprova.',
+    guideUnavailable: 'Questa destinazione non ha una guida pubblicata completa per creare l’itinerario.',
+    serviceUnavailable: 'Non è stato possibile salvare o inviare l’itinerario. Riprova più tardi.',
+    rateLimited: 'Hai raggiunto il limite di richieste. Riprova più tardi.',
+    day: 'Giorno',
+    estimatedBudget: 'Budget stimato',
+    stops: 'tappe',
+    timeOfDay: { morning: 'mattina', lunch: 'pranzo', afternoon: 'pomeriggio', evening: 'sera', night: 'notte' },
+    unavailableTranslation: 'Non è stato possibile caricare questa pagina nella lingua selezionata.',
+  },
+  de: {
+    title: 'Plane deine Reise · LocalDepth',
+    intro: 'Plane nicht einfach eine Reise. Entscheide, wie sie sich anfühlen soll.',
+    description: 'Ein paar Details genügen, um aus deiner Reiselust Tage voller besonderer Orte, lokaler Aromen und Zeit zum Genießen zu machen.',
+    eyebrow: 'Deine nächste Geschichte beginnt hier',
+    stepDestination: 'Das Reiseziel',
+    stepExperience: 'Deine Art zu reisen',
+    stepDelivery: 'Deine Reise erhalten',
+    stepOneTitle: 'Zuerst der Ort.',
+    stepOneDescription: 'Wähle Ziel und Reisedauer. Den passenden Rhythmus finden wir gemeinsam.',
+    stepTwoTitle: 'Jetzt, was dich bewegt.',
+    stepTwoDescription: 'Erzähl uns, was dich mit einem Ort verbindet. Es gibt kein Richtig oder Falsch.',
+    stepThreeTitle: 'Fast bist du da.',
+    stepThreeDescription: 'Wir senden dir einen persönlichen Guide mit echten Orten, ausgewählt von unserer Redaktion.',
+    nextStep: 'Weiter entdecken',
+    backStep: 'Zurück',
+    previewLabel: 'Deine Reise nimmt Gestalt an',
+    previewPrompt: 'Deine nächste Geschichte',
+    previewEmptyDestination: 'Wähle ein Reiseziel und stell es dir schon einmal vor.',
+    previewEmptyDate: 'Wann immer du magst',
+    previewDays: 'Tage zum Entdecken',
+    previewBudget: 'Tagesbudget',
+    previewInterests: 'Was dich bewegt',
+    previewImageAlt: 'Inspirierende Landschaft für eine unvergessliche Reise',
+    previewFooter: 'Lokal gedacht. Für dich gemacht.',
+    back: 'Zurück zur Startseite',
+    destination: 'Wohin möchtest du reisen?',
+    destinationPlaceholder: 'Veröffentlichtes Reiseziel auswählen',
+    noDestinations: 'Zurzeit sind keine veröffentlichten Reiseziele verfügbar.',
+    travelDate: 'Ankunftsdatum (optional)',
+    days: 'Wie viele Tage?',
+    budget: 'Ungefähres Tagesbudget',
+    interests: 'Was möchtest du erleben?',
+    food: 'Lokales Essen',
+    culture: 'Kultur',
+    nature: 'Natur',
+    architecture: 'Architektur',
+    nightlife: 'Nachtleben',
+    hiddenGems: 'Geheimtipps',
+    pace: 'Wie reist du am liebsten?',
+    relaxed: 'Ganz entspannt',
+    balanced: 'Eine gute Mischung',
+    intense: 'Jeden Tag voll auskosten',
+    avoidCrowds: 'Ich möchte Menschenmengen vermeiden',
+    email: 'Wohin sollen wir den Guide senden?',
+    emailPlaceholder: 'du@email.de',
+    itineraryConsent: 'Ich bin damit einverstanden, dass LocalDepth meine E-Mail und Präferenzen speichert und mir diesen Reiseplan sendet. Die Anfragedaten werden 12 Monate gespeichert.',
+    privacyNote: 'Reiseideen per E-Mail zu erhalten ist optional und hat keinen Einfluss auf deine Reiseplan-Anfrage.',
+    newsletter: 'Ich möchte mich auch für Reiseideen und Routenvorschläge per E-Mail anmelden.',
+    submit: 'Reiseplan erstellen',
+    submitting: 'Deine Reise wird geplant…',
+    required: 'Fülle die Pflichtfelder aus und wähle mindestens ein Interesse.',
+    loadingDestinations: 'Veröffentlichte Reiseziele konnten nicht geladen werden. Bitte später erneut versuchen.',
+    successTitle: 'Deine Reise beginnt hier',
+    sent: 'Geschafft! Dein Reiseplan wurde per E-Mail gesendet.',
+    emailFailed: 'Deine Anfrage wurde gespeichert, aber die E-Mail konnte nicht gesendet werden.',
+    emailSentStatusUnknown: 'Die E-Mail wurde gesendet, aber der Status konnte nicht aktualisiert werden.',
+    requestFailed: 'Dein Reiseplan konnte nicht erstellt werden. Bitte versuche es erneut.',
+    guideUnavailable: 'Für dieses Reiseziel gibt es keinen vollständigen veröffentlichten Guide.',
+    serviceUnavailable: 'Der Reiseplan konnte nicht gespeichert oder gesendet werden. Bitte später erneut versuchen.',
+    rateLimited: 'Du hast das Anfragelimit erreicht. Bitte später erneut versuchen.',
+    day: 'Tag',
+    estimatedBudget: 'Geschätztes Budget',
+    stops: 'Stopps',
+    timeOfDay: { morning: 'Morgen', lunch: 'Mittagessen', afternoon: 'Nachmittag', evening: 'Abend', night: 'Nacht' },
+    unavailableTranslation: 'Diese Seite konnte nicht in der ausgewählten Sprache geladen werden.',
+  },
+} as const;
+const text = copy[locale];
+const apiLanguage = locale === 'es' ? '' : `&lang=${locale}`;
+let destinations: Destination[] = [];
+let destinationLoadError = '';
+try {
+  const response = await fetch(`${apiUrl}/content/destinations?type=city&status=published${apiLanguage}`);
+  if (!response.ok) throw new Error(`Content API returned HTTP ${response.status}`);
+  const payload = (await response.json()) as { success?: boolean; data?: Destination[]; error?: string };
+  if (!payload.success || !Array.isArray(payload.data)) {
+    throw new Error(payload.error || 'Content API returned an invalid destination list');
+  }
+  destinations = payload.data.filter((destination) => destination.type === 'city' && destination.status === 'published');
+} catch (error) {
+  destinationLoadError = error instanceof Error ? error.message : text.loadingDestinations;
+  if (locale !== 'es') Astro.response.status = 503;
+  console.error('Could not load published cities for the trip planner:', error);
+}
+const today = new Date().toISOString().slice(0, 10);
+const destinationOptions = destinations.map((destination) => {
+  const translation = locale === 'es' ? undefined : destination.translations?.[locale];
+  return {
+    ...destination,
+    displayName: translation?.name || destination.name,
+    displayCountry: translation?.country || destination.country,
+  };
+});
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#f5f3ec" />
+    <meta name="description" content={text.description} />
+    <title>{text.title}</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap');
+      :root {
+        font-family: 'DM Sans', sans-serif;
+        color: #20231f;
+        background: #f5f3ec;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        --paper: #f5f3ec;
+        --ink: #20231f;
+        --muted: #686b62;
+        --green: #244f3d;
+        --lime: #d6ed72;
+        --line: rgba(32, 35, 31, .16);
+        --serif: 'Playfair Display', Georgia, serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; }
+      a { color: inherit; text-decoration: none; }
+      button, input, select { font: inherit; }
+      a:focus-visible, input:focus-visible, select:focus-visible, button:focus-visible {
+        outline: 3px solid #789d43;
+        outline-offset: 3px;
+      }
+      .site-header {
+        width: min(1240px, calc(100% - 64px));
+        height: 82px;
+        margin: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.05em; }
+      .brand-mark { width: 40px; height: 40px; flex: 0 0 40px; }
+      .language-switcher { display: flex; align-items: center; gap: 10px; }
+      .language-switcher a {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border: 1px solid transparent;
+        border-radius: 50%;
+        font-size: 20px;
+      }
+      .language-switcher a[aria-current=page] { border-color: var(--green); background: #fffefa; }
+      main { width: min(1160px, calc(100% - 48px)); margin: 54px auto 110px; }
+      .intro {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(290px, .72fr);
+        align-items: center;
+        gap: clamp(35px, 7vw, 100px);
+        margin-bottom: 45px;
+      }
+      .intro-copy { max-width: 660px; }
+      .back { color: var(--green); font-size: 12px; font-weight: 700; }
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 27px;
+        color: var(--green);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .2em;
+        text-transform: uppercase;
+      }
+      .eyebrow::before { width: 24px; height: 1px; background: var(--green); content: ''; }
+      h1 {
+        max-width: 690px;
+        margin: 17px 0 14px;
+        font-family: var(--serif);
+        font-size: clamp(46px, 6.3vw, 78px);
+        font-weight: 500;
+        letter-spacing: -.06em;
+        line-height: .99;
+      }
+      .intro p { max-width: 570px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.8; }
+      .intro-art {
+        position: relative;
+        min-height: 270px;
+        overflow: hidden;
+        border-radius: 48% 48% 8px 8px;
+        background: var(--green);
+      }
+      .intro-art img { position: absolute; width: 100%; height: 100%; object-fit: cover; inset: 0; }
+      .intro-art::after {
+        position: absolute;
+        background: linear-gradient(180deg, transparent 38%, rgba(15, 28, 22, .68));
+        content: '';
+        inset: 0;
+      }
+      .art-caption {
+        position: absolute;
+        z-index: 1;
+        right: 20px;
+        bottom: 20px;
+        left: 20px;
+        color: #fffefa;
+        font-size: 10px;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+      }
+      .art-stamp {
+        position: absolute;
+        z-index: 2;
+        top: 20px;
+        right: 20px;
+        display: grid;
+        width: 54px;
+        height: 54px;
+        place-items: center;
+        border: 1px solid rgba(255,255,255,.7);
+        border-radius: 50%;
+        color: #fffefa;
+        font-family: var(--serif);
+        font-size: 25px;
+      }
+      .planner-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .72fr); align-items: start; gap: 22px; }
+      .planner-card {
+        min-width: 0;
+        padding: clamp(24px, 4vw, 42px);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fffefa;
+        box-shadow: 0 22px 70px rgba(37,43,33,.07);
+      }
+      .wizard-progress { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; margin-bottom: 30px; }
+      .step-count { color: var(--green); font-family: var(--serif); font-size: 23px; white-space: nowrap; }
+      .step-count span:last-child { color: #a4a79e; font-family: 'DM Sans',sans-serif; font-size: 11px; }
+      .progress-track { height: 3px; overflow: hidden; background: #e7e8df; }
+      .progress-fill { display: block; width: 33.333%; height: 100%; background: var(--green); transition: width 220ms ease; }
+      .step-name { color: var(--muted); font-size: 10px; font-weight: 700; text-align: right; }
+      .stepper { display: flex; gap: 7px; margin: 0 0 31px; padding: 0; list-style: none; }
+      .stepper li { flex: 1; min-width: 0; }
+      .step-indicator {
+        display: block;
+        width: 100%;
+        padding: 0 0 10px;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        background: transparent;
+        color: #92958c;
+        font-size: 10px;
+        font-weight: 600;
+        text-align: left;
+      }
+      .step-indicator[aria-current=step] { border-color: var(--green); color: var(--green); }
+      .step-indicator > span:first-child { margin-right: 5px; font-variant-numeric: tabular-nums; }
+      .wizard-step[hidden] { display: none; }
+      .step-heading { margin-bottom: 25px; }
+      .step-heading h2 { margin: 0 0 8px; font-family: var(--serif); font-size: clamp(28px, 3vw, 36px); font-weight: 500; letter-spacing: -.04em; }
+      .step-heading p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+      .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 16px; }
+      .field { display: grid; align-content: start; gap: 9px; min-width: 0; }
+      .field--wide { grid-column: 1/-1; }
+      label, .field-label { font-size: 12px; font-weight: 700; }
+      input:not([type=checkbox]):not([type=radio]), select {
+        width: 100%;
+        min-height: 49px;
+        padding: 0 13px;
+        border: 1px solid #d7d8cf;
+        border-radius: 6px;
+        background: #fffefa;
+        color: var(--ink);
+        font-size: 13px;
+      }
+      input::placeholder { color: #96998f; }
+      input[type=checkbox], input[type=radio] { accent-color: var(--green); }
+      .interest-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 5px; }
+      .interest-option { position: relative; }
+      .interest-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+      .interest-option label {
+        display: flex;
+        min-height: 50px;
+        align-items: center;
+        gap: 10px;
+        padding: 0 12px;
+        border: 1px solid #e1e2d9;
+        border-radius: 7px;
+        background: #fffefa;
+        color: #41443e;
+        font-size: 11px;
+        cursor: pointer;
+        transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+      }
+      .interest-option label::before {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        place-items: center;
+        border-radius: 50%;
+        background: #f0f1e9;
+        color: var(--green);
+        content: attr(data-symbol);
+        font-size: 13px;
+      }
+      .interest-option input:checked + label { transform: translateY(-1px); border-color: var(--green); background: #f0f3e7; }
+      .interest-option input:focus-visible + label { outline: 3px solid #789d43; outline-offset: 3px; }
+      .pace-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+      .pace-option { position: relative; }
+      .pace-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+      .pace-option label {
+        display: flex;
+        min-height: 76px;
+        flex-direction: column;
+        justify-content: center;
+        gap: 7px;
+        padding: 10px;
+        border: 1px solid #e1e2d9;
+        border-radius: 7px;
+        background: #fffefa;
+        font-size: 10px;
+        line-height: 1.4;
+        cursor: pointer;
+      }
+      .pace-option label::before { color: var(--green); content: attr(data-symbol); font-size: 16px; }
+      .pace-option input:checked + label { border-color: var(--green); background: #f0f3e7; }
+      .pace-option input:focus-visible + label { outline: 3px solid #789d43; outline-offset: 3px; }
+      .check-row { display: flex; align-items: flex-start; gap: 9px; color: #41443e; font-size: 12px; font-weight: 500; line-height: 1.5; }
+      .check-row input { width: 18px; min-height: 18px; height: 18px; flex: 0 0 18px; margin: 1px 0 0; }
+      .check-row label { font-size: 11px; font-weight: 500; }
+      .avoid-crowds { align-self: end; padding: 14px; border: 1px solid #e1e2d9; border-radius: 7px; background: #f8f8f3; }
+      .field--consent { grid-column: 1/-1; padding-top: 18px; border-top: 1px solid var(--line); }
+      .privacy-note { margin: 8px 0 0 27px; color: var(--muted); font-size: 10px; line-height: 1.65; }
+      .newsletter { margin-top: 14px; }
+      .wizard-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+      .wizard-back, .wizard-next, .submit {
+        display: inline-flex;
+        min-height: 48px;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 0 18px;
+        border: 1px solid var(--green);
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+      }
+      .wizard-back { background: transparent; color: var(--green); }
+      .wizard-back:hover { background: #f0f3e7; }
+      .wizard-next, .submit { margin-left: auto; background: var(--green); color: #fffefa; }
+      .wizard-next:hover, .submit:hover { transform: translateY(-1px); background: #193a2c; }
+      .wizard-back[hidden], .wizard-next[hidden], .submit[hidden] { display: none; }
+      .wizard-next::after { content: '↗'; font-size: 15px; font-weight: 400; }
+      .form-status { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .form-status[data-error=true] { color: #a33126; }
+      .form-status:empty { display: none; }
+      .trip-preview {
+        position: sticky;
+        top: 24px;
+        overflow: hidden;
+        border-radius: 13px;
+        background: var(--green);
+        color: #fffefa;
+        box-shadow: 0 18px 54px rgba(31,54,42,.18);
+      }
+      .preview-image { position: relative; height: 250px; overflow: hidden; background: #698477; }
+      .preview-image img { width: 100%; height: 100%; object-fit: cover; transition: transform 600ms ease; }
+      .trip-preview:hover .preview-image img { transform: scale(1.04); }
+      .preview-image::after { position: absolute; background: linear-gradient(180deg,rgba(10,30,22,.05),rgba(10,30,22,.58)); content: ''; inset: 0; }
+      .preview-image span {
+        position: absolute;
+        z-index: 1;
+        right: 17px;
+        bottom: 16px;
+        left: 17px;
+        color: rgba(255,254,250,.83);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .17em;
+        text-transform: uppercase;
+      }
+      .preview-body { padding: 22px; }
+      .preview-kicker { color: var(--lime); font-size: 9px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
+      .preview-title { margin: 10px 0 8px; font-family: var(--serif); font-size: 28px; font-weight: 500; letter-spacing: -.035em; line-height: 1.12; }
+      .preview-destination { margin: 0; color: rgba(255,254,250,.7); font-size: 11px; line-height: 1.6; }
+      .preview-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 22px 0; padding: 16px 0; border-top: 1px solid rgba(255,255,255,.18); border-bottom: 1px solid rgba(255,255,255,.18); }
+      .preview-fact strong { display: block; font-family: var(--serif); font-size: 20px; font-weight: 500; }
+      .preview-fact span { display: block; margin-top: 4px; color: rgba(255,254,250,.68); font-size: 9px; }
+      .preview-interest-heading { margin: 0 0 9px; color: rgba(255,254,250,.65); font-size: 9px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+      .preview-chips { display: flex; min-height: 28px; flex-wrap: wrap; gap: 6px; }
+      .preview-chip { padding: 6px 9px; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; color: #fffefa; font-size: 9px; }
+      .preview-chip--empty { color: rgba(255,254,250,.62); }
+      .preview-footer { margin-top: 23px; color: rgba(255,254,250,.56); font-size: 9px; }
+      .result { margin-top: 32px; }
+      .result h2 { font-family: var(--serif); font-size: 34px; font-weight: 500; }
+      .result-day { margin: 16px 0; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: #fffefa; }
+      .result-day h3 { margin: 0 0 8px; font-family: var(--serif); font-size: 22px; font-weight: 500; }
+      .result-day p, .result-day li { color: #50534c; font-size: 13px; line-height: 1.7; }
+      .honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+      @media (max-width: 850px) {
+        main { width: min(680px, calc(100% - 40px)); margin-top: 38px; }
+        .intro { grid-template-columns: 1fr .72fr; gap: 26px; }
+        .intro-art { min-height: 220px; }
+        .planner-layout { grid-template-columns: 1fr; }
+        .trip-preview { position: relative; top: auto; display: grid; grid-template-columns: .8fr 1.2fr; }
+        .preview-image { height: 100%; min-height: 250px; }
+      }
+      @media (max-width: 600px) {
+        .site-header { width: calc(100% - 32px); height: 68px; }
+        .brand-mark { width: 36px; height: 36px; flex-basis: 36px; }
+        .language-switcher { gap: 3px; }
+        .language-switcher a { width: 29px; height: 29px; font-size: 17px; }
+        main { width: calc(100% - 32px); margin: 30px auto 72px; }
+        .intro { grid-template-columns: 1fr; gap: 24px; margin-bottom: 28px; }
+        .eyebrow { margin-top: 20px; }
+        h1 { max-width: 480px; font-size: clamp(43px, 12vw, 62px); }
+        .intro p { font-size: 13px; }
+        .intro-art { min-height: 190px; border-radius: 100px 100px 8px 8px; }
+        .planner-card { padding: 21px 17px; }
+        .wizard-progress { gap: 9px; margin-bottom: 24px; }
+        .step-name { max-width: 96px; }
+        .stepper { gap: 8px; margin-bottom: 25px; }
+        .step-indicator { font-size: 0; }
+        .step-indicator > span:first-child { font-size: 10px; }
+        .form-grid { grid-template-columns: 1fr; gap: 17px; }
+        .field--wide, .field--consent { grid-column: 1; }
+        .pace-options { grid-template-columns: 1fr; }
+        .pace-option label { min-height: 52px; flex-direction: row; align-items: center; }
+        .trip-preview { grid-template-columns: 1fr; }
+        .preview-image { height: 190px; min-height: 0; }
+        .preview-body { padding: 19px; }
+        .wizard-controls { gap: 8px; }
+        .wizard-back, .wizard-next, .submit { min-height: 46px; padding: 0 12px; font-size: 10px; }
+        .wizard-controls .form-status { flex-basis: 100%; order: 3; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href={localizedUrl('/', locale)} aria-label={`LocalDepth, ${text.back}`}>
+        <BrandMark /><span>localdepth</span>
+      </a>
+      <nav class="language-switcher" aria-label={localeLabels[locale]}>
+        {locales.map((language) => (
+          <a
+            href={localizedUrl(Astro.url.pathname, language)}
+            aria-label={localeLabels[language]}
+            aria-current={language === locale ? 'page' : undefined}
+            title={localeLabels[language]}
+          >{localeFlags[language]}</a>
+        ))}
+      </nav>
+    </header>
+    <main>
+      <section class="intro">
+        <div class="intro-copy">
+          <a class="back" href={localizedUrl('/', locale)}>← {text.back}</a>
+          <div class="eyebrow">{text.eyebrow}</div>
+          <h1>{text.intro}</h1>
+          <p>{text.description}</p>
+        </div>
+        <div class="intro-art">
+          <img
+            src={fallbackTripImage}
+            alt={text.previewImageAlt}
+            loading="eager"
+          />
+          <span class="art-stamp" aria-hidden="true">↗</span>
+          <span class="art-caption">{text.previewFooter}</span>
+        </div>
+      </section>
+      {destinationLoadError ? <p class="form-status" role="alert">{text.loadingDestinations}</p> : destinations.length === 0 ? (
+        <p class="form-status" role="status">{text.noDestinations}</p>
+      ) : (
+        <div class="planner-layout">
+          <section class="planner-card" aria-label={text.title}>
+            <form id="trip-form">
+              <div class="wizard-progress" aria-live="polite">
+                <div class="step-count"><span id="step-current">01</span> <span>/ 03</span></div>
+                <div class="progress-track" aria-hidden="true"><span id="progress-fill" class="progress-fill"></span></div>
+                <span id="step-name" class="step-name">{text.stepDestination}</span>
+              </div>
+              <ol class="stepper" aria-label={text.title}>
+                <li><span class="step-indicator" aria-current="step"><span>01</span> {text.stepDestination}</span></li>
+                <li><span class="step-indicator"><span>02</span> {text.stepExperience}</span></li>
+                <li><span class="step-indicator"><span>03</span> {text.stepDelivery}</span></li>
+              </ol>
+              <section class="wizard-step" data-step="0" aria-labelledby="step-title-0">
+                <div class="step-heading">
+                  <h2 id="step-title-0" tabindex="-1">{text.stepOneTitle}</h2>
+                  <p>{text.stepOneDescription}</p>
+                </div>
+                <div class="form-grid">
+                  <div class="field field--wide">
+                    <label for="destination">{text.destination}</label>
+                    <select id="destination" name="destination" required>
+                      <option value="" selected disabled>{text.destinationPlaceholder}</option>
+                      {destinationOptions.map((destination) => (
+                        <option
+                          value={destination.slug}
+                          data-name={destination.displayName}
+                          data-country={destination.displayCountry}
+                          data-currency={destination.currency?.toUpperCase() || 'EUR'}
+                          data-image={destination.heroImageUrl || fallbackTripImage}
+                        >
+                          {destination.displayName}, {destination.displayCountry}
+                        </option>
+                      ))}
+                    </select>
+                    <input id="currency" name="currency" type="hidden" value="EUR" />
+                  </div>
+                  <div class="field">
+                    <label for="travelDate">{text.travelDate}</label>
+                    <input id="travelDate" name="travelDate" type="date" min={today} />
+                  </div>
+                  <div class="field">
+                    <label for="totalDays">{text.days}</label>
+                    <input id="totalDays" name="totalDays" type="number" min="1" max="30" step="1" value="3" required />
+                  </div>
+                  <div class="field field--wide">
+                    <label for="budgetPerDay">{text.budget}</label>
+                    <input id="budgetPerDay" name="budgetPerDay" type="number" min="1" max="1000000" step="1" value="100" required />
+                  </div>
+                </div>
+              </section>
+              <section class="wizard-step" data-step="1" aria-labelledby="step-title-1" hidden>
+                <div class="step-heading">
+                  <h2 id="step-title-1" tabindex="-1">{text.stepTwoTitle}</h2>
+                  <p>{text.stepTwoDescription}</p>
+                </div>
+                <div class="form-grid">
+                  <fieldset class="field field--wide" style="padding:0;border:0;margin:0">
+                    <legend class="field-label">{text.interests}</legend>
+                    <div class="interest-grid">
+                      {([
+                        ['food', text.food, '✳'],
+                        ['culture', text.culture, '⌂'],
+                        ['nature', text.nature, '≈'],
+                        ['architecture', text.architecture, '⌁'],
+                        ['nightlife', text.nightlife, '◌'],
+                        ['hidden_gems', text.hiddenGems, '✦'],
+                      ] as const).map(([value, label, symbol], index) => (
+                        <div class="interest-option">
+                          <input
+                            type="checkbox"
+                            name="interests"
+                            value={value}
+                            id={`interest-${value}`}
+                            required={index === 0}
+                          />
+                          <label for={`interest-${value}`} data-symbol={symbol}>{label}</label>
+                        </div>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <fieldset class="field field--wide" style="padding:0;border:0;margin:0">
+                    <legend class="field-label">{text.pace}</legend>
+                    <div class="pace-options">
+                      {([
+                        ['relaxed', text.relaxed, '〜'],
+                        ['balanced', text.balanced, '↗'],
+                        ['intense', text.intense, '✳'],
+                      ] as const).map(([value, label, symbol]) => (
+                        <div class="pace-option">
+                          <input id={`pace-${value}`} name="pace" type="radio" value={value} checked={value === 'balanced'} />
+                          <label for={`pace-${value}`} data-symbol={symbol}>{label}</label>
+                        </div>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <div class="check-row avoid-crowds field--wide">
+                    <input id="avoidCrowds" name="avoidCrowds" type="checkbox" value="true" />
+                    <label for="avoidCrowds">{text.avoidCrowds}</label>
+                  </div>
+                </div>
+              </section>
+              <section class="wizard-step" data-step="2" aria-labelledby="step-title-2" hidden>
+                <div class="step-heading">
+                  <h2 id="step-title-2" tabindex="-1">{text.stepThreeTitle}</h2>
+                  <p>{text.stepThreeDescription}</p>
+                </div>
+                <div class="form-grid">
+                  <div class="field field--wide">
+                    <label for="email">{text.email}</label>
+                    <input id="email" name="email" type="email" maxlength="254" placeholder={text.emailPlaceholder} autocomplete="email" required />
+                  </div>
+                  <input type="hidden" name="locale" value={locale} />
+                  <div class="honeypot" aria-hidden="true">
+                    <label for="company">Company</label>
+                    <input id="company" name="company" type="text" tabindex="-1" autocomplete="off" />
+                  </div>
+                  <div class="field--consent">
+                    <div class="check-row">
+                      <input id="itineraryConsent" name="itineraryConsent" type="checkbox" value="true" required />
+                      <label for="itineraryConsent">{text.itineraryConsent}</label>
+                    </div>
+                    <p class="privacy-note">{text.privacyNote}</p>
+                    <div class="check-row newsletter">
+                      <input id="newsletterOptIn" name="newsletterOptIn" type="checkbox" value="true" />
+                      <label for="newsletterOptIn">{text.newsletter}</label>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <div class="wizard-controls">
+                <button id="step-back" class="wizard-back" type="button" hidden>← {text.backStep}</button>
+                <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
+                <button id="step-next" class="wizard-next" type="button">{text.nextStep}</button>
+                <button class="submit" type="submit" hidden>{text.submit}</button>
+              </div>
+            </form>
+          </section>
+          <aside class="trip-preview" aria-labelledby="preview-title">
+            <div class="preview-image">
+              <img
+                id="preview-image"
+                src={fallbackTripImage}
+                alt={text.previewImageAlt}
+              />
+              <span>{text.previewLabel}</span>
+            </div>
+            <div class="preview-body">
+              <span class="preview-kicker">{text.previewPrompt}</span>
+              <h2 id="preview-title" class="preview-title">{text.previewEmptyDestination}</h2>
+              <p id="preview-destination" class="preview-destination">{text.previewEmptyDate}</p>
+              <div class="preview-facts">
+                <div class="preview-fact">
+                  <strong><span id="preview-days">3</span></strong>
+                  <span>{text.previewDays}</span>
+                </div>
+                <div class="preview-fact">
+                  <strong><span id="preview-budget">100 EUR</span></strong>
+                  <span>{text.previewBudget}</span>
+                </div>
+              </div>
+              <h3 class="preview-interest-heading">{text.previewInterests}</h3>
+              <div id="preview-interests" class="preview-chips">
+                <span class="preview-chip preview-chip--empty">✦</span>
+              </div>
+              <p class="preview-footer">{text.previewFooter}</p>
+            </div>
+          </aside>
+        </div>
+      )}
+      <section id="itinerary-result" class="result" aria-live="polite"></section>
+    </main>
+    <script is:inline define:vars={{ text }}>
+      const form = document.querySelector('#trip-form');
+      const status = document.querySelector('#form-status');
+      const result = document.querySelector('#itinerary-result');
+      const submitButton = form?.querySelector('button[type="submit"]');
+      const destinationSelect = form?.querySelector('#destination');
+      const currencyInput = form?.querySelector('#currency');
+      const interestCheckboxes = [...(form?.querySelectorAll('input[name="interests"]') || [])];
+      const wizardSteps = [...(form?.querySelectorAll('.wizard-step') || [])];
+      const stepperButtons = [...(form?.querySelectorAll('.step-indicator') || [])];
+      const stepBackButton = form?.querySelector('#step-back');
+      const stepNextButton = form?.querySelector('#step-next');
+      const stepCurrent = form?.querySelector('#step-current');
+      const stepName = form?.querySelector('#step-name');
+      const progressFill = form?.querySelector('#progress-fill');
+      const previewTitle = document.querySelector('#preview-title');
+      const previewDestination = document.querySelector('#preview-destination');
+      const previewImage = document.querySelector('#preview-image');
+      const previewDays = document.querySelector('#preview-days');
+      const previewBudget = document.querySelector('#preview-budget');
+      const previewInterests = document.querySelector('#preview-interests');
+      let currentStep = 0;
+
+      const stepLabels = [text.stepDestination, text.stepExperience, text.stepDelivery];
+
+      function updateWizard() {
+        wizardSteps.forEach((step, index) => {
+          step.hidden = index !== currentStep;
+        });
+        stepperButtons.forEach((button, index) => {
+          if (index === currentStep) button.setAttribute('aria-current', 'step');
+          else button.removeAttribute('aria-current');
+        });
+        if (stepCurrent) stepCurrent.textContent = String(currentStep + 1).padStart(2, '0');
+        if (stepName) stepName.textContent = stepLabels[currentStep];
+        if (progressFill) progressFill.style.width = `${((currentStep + 1) / wizardSteps.length) * 100}%`;
+        if (stepBackButton) stepBackButton.hidden = currentStep === 0;
+        if (stepNextButton) stepNextButton.hidden = currentStep === wizardSteps.length - 1;
+        if (submitButton) submitButton.hidden = currentStep !== wizardSteps.length - 1;
+      }
+
+      function validateCurrentStep() {
+        updateInterestRequirement();
+        const requiredFields = wizardSteps[currentStep].querySelectorAll('[required]');
+        for (const field of requiredFields) {
+          if (!field.checkValidity()) {
+            field.reportValidity();
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function goToStep(step) {
+        currentStep = Math.max(0, Math.min(step, wizardSteps.length - 1));
+        updateWizard();
+        wizardSteps[currentStep].querySelector('h2')?.focus();
+      }
+
+      function updateTripPreview() {
+        const selected = destinationSelect?.selectedOptions[0];
+        const destinationName = selected?.dataset.name;
+        if (previewTitle) previewTitle.textContent = destinationName || text.previewEmptyDestination;
+        if (previewDestination) {
+          const country = selected?.dataset.country;
+          const travelDate = form?.querySelector('#travelDate')?.value;
+          let formattedDate = '';
+          if (travelDate) {
+            formattedDate = new Intl.DateTimeFormat(document.documentElement.lang, { dateStyle: 'medium' })
+              .format(new Date(`${travelDate}T12:00:00`));
+          }
+          previewDestination.textContent = [country, formattedDate].filter(Boolean).join(' · ') || text.previewEmptyDate;
+        }
+        if (previewImage && selected?.dataset.image) previewImage.src = selected.dataset.image;
+        if (previewDays) previewDays.textContent = form?.querySelector('#totalDays')?.value || '3';
+        if (previewBudget) {
+          const budget = Number(form?.querySelector('#budgetPerDay')?.value || 0);
+          const formattedBudget = new Intl.NumberFormat(document.documentElement.lang, { maximumFractionDigits: 0 }).format(budget);
+          previewBudget.textContent = `${formattedBudget} ${currencyInput?.value || 'EUR'}`;
+        }
+        if (previewInterests) {
+          previewInterests.replaceChildren();
+          const selectedInterests = interestCheckboxes.filter((checkbox) => checkbox.checked);
+          if (selectedInterests.length === 0) {
+            const emptyChip = document.createElement('span');
+            emptyChip.className = 'preview-chip preview-chip--empty';
+            emptyChip.textContent = '✦';
+            previewInterests.append(emptyChip);
+          } else {
+            selectedInterests.forEach((checkbox) => {
+              const label = form.querySelector(`label[for="${checkbox.id}"]`);
+              const chip = document.createElement('span');
+              chip.className = 'preview-chip';
+              chip.textContent = label?.textContent || checkbox.value;
+              previewInterests.append(chip);
+            });
+          }
+        }
+      }
+
+      function updateInterestRequirement() {
+        const hasSelection = interestCheckboxes.some((checkbox) => checkbox.checked);
+        if (interestCheckboxes[0]) interestCheckboxes[0].required = !hasSelection;
+      }
+
+      stepNextButton?.addEventListener('click', () => {
+        if (validateCurrentStep()) goToStep(currentStep + 1);
+      });
+      stepBackButton?.addEventListener('click', () => goToStep(currentStep - 1));
+      interestCheckboxes.forEach((checkbox) => checkbox.addEventListener('change', () => {
+        updateInterestRequirement();
+        updateTripPreview();
+      }));
+      form?.querySelectorAll('input[name="pace"]').forEach((radio) => {
+        radio.addEventListener('change', updateTripPreview);
+      });
+      destinationSelect?.addEventListener('change', () => {
+        const selected = destinationSelect.selectedOptions[0];
+        if (currencyInput) currencyInput.value = selected?.dataset.currency || 'EUR';
+        updateTripPreview();
+      });
+      form?.querySelector('#travelDate')?.addEventListener('change', updateTripPreview);
+      form?.querySelector('#totalDays')?.addEventListener('input', updateTripPreview);
+      form?.querySelector('#budgetPerDay')?.addEventListener('input', updateTripPreview);
+      updateWizard();
+      updateTripPreview();
+
+      function appendText(parent, tagName, value, className) {
+        const element = document.createElement(tagName);
+        element.textContent = value || '';
+        if (className) element.className = className;
+        parent.append(element);
+        return element;
+      }
+
+      function renderItinerary(plan, destination, estimatedBudget) {
+        result.replaceChildren();
+        appendText(result, 'h2', `${text.successTitle}: ${destination.name}`);
+        appendText(result, 'p', plan.itinerary.summary);
+        if (estimatedBudget) {
+          appendText(result, 'p', `${text.estimatedBudget}: ${estimatedBudget.total} ${estimatedBudget.currency}`);
+        }
+        plan.itinerary.days.forEach((day) => {
+          const article = document.createElement('article');
+          article.className = 'result-day';
+          appendText(article, 'h3', day.title);
+          appendText(article, 'p', day.summary);
+          const list = document.createElement('ol');
+          day.stops.forEach((stop) => {
+            const item = document.createElement('li');
+            item.textContent = `${stop.name} · ${text.timeOfDay[stop.timeOfDay] || stop.timeOfDay}${stop.notes ? ` — ${stop.notes}` : ''}`;
+            list.append(item);
+          });
+          article.append(list);
+          if (day.crowdTips) appendText(article, 'p', day.crowdTips);
+          result.append(article);
+        });
+      }
+
+      form?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        updateInterestRequirement();
+        if (!form.reportValidity()) {
+          status.textContent = text.required;
+          status.dataset.error = 'true';
+          return;
+        }
+
+        status.textContent = text.submitting;
+        status.dataset.error = 'false';
+        submitButton.disabled = true;
+        result.replaceChildren();
+        const formData = new FormData(form);
+        const payload = {
+          destination: formData.get('destination'),
+          travelDate: formData.get('travelDate') || null,
+          totalDays: Number(formData.get('totalDays')),
+          budgetPerDay: Number(formData.get('budgetPerDay')),
+          currency: formData.get('currency'),
+          interests: formData.getAll('interests'),
+          pace: formData.get('pace'),
+          avoidCrowds: formData.get('avoidCrowds') === 'true',
+          email: formData.get('email'),
+          itineraryConsent: formData.get('itineraryConsent') === 'true',
+          newsletterOptIn: formData.get('newsletterOptIn') === 'true',
+          locale: formData.get('locale'),
+          company: formData.get('company'),
+        };
+
+        try {
+          const response = await fetch('/api/recommendations/plan-and-send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const body = await response.json();
+          if (body.data?.itinerary) {
+            renderItinerary(body.data.itinerary, body.data.itinerary.destination || body.data.destination || {}, body.data.itinerary.estimatedBudget);
+          }
+          if (response.ok && body.success) {
+            status.textContent = text.sent;
+            form.reset();
+            updateInterestRequirement();
+            goToStep(0);
+            updateTripPreview();
+          } else if (body.data?.emailSent === true) {
+            status.textContent = text.emailSentStatusUnknown;
+            status.dataset.error = 'true';
+          } else if (body.data?.itinerary) {
+            status.textContent = text.emailFailed;
+            status.dataset.error = 'true';
+          } else {
+            status.textContent = response.status === 404
+              ? text.guideUnavailable
+              : response.status === 429
+                ? text.rateLimited
+                : response.status === 503 || response.status === 502
+                  ? text.serviceUnavailable
+                  : text.requestFailed;
+            status.dataset.error = 'true';
+          }
+        } catch {
+          status.textContent = text.serviceUnavailable;
+          status.dataset.error = 'true';
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1829 @@
+---
+import type { Destination, DestinationFood, DestinationHighlight, FAQ } from '@localdepth/shared-types';
+import BrandMark from '../../components/BrandMark.astro';
+import { getPostImage, posts } from '../../data/posts';
+import { getCopy, getLocale, localeFlags, localeLabels, locales, localizedUrl, translateContent } from '../../i18n';
+
+export const prerender = false;
+
+interface TravelGuidePage {
+  slug: string;
+  destination: string;
+  category: string;
+  title: string;
+  excerpt: string;
+  image: string;
+  alt: string;
+  latitude: number;
+  longitude: number;
+  bestTime: string;
+  suggestedDays: number;
+  averageDailyBudget: number | null;
+  currency: string;
+  language: string;
+  introduction: string;
+  gettingAround: string;
+  placesToVisit: DestinationHighlight[];
+  typicalFoods: DestinationFood[];
+  travelTips: string[];
+  faqs: FAQ[];
+  isExample: boolean;
+}
+
+interface DestinationEngagement {
+  averageRating: number;
+  ratingCount: number;
+  commentCount: number;
+  comments: Array<{ id: string; authorName: string; body: string; createdAt: string }>;
+}
+
+const slug = Astro.params.slug || '';
+const locale = getLocale(Astro.url.searchParams.get('lang'));
+const copy = getCopy(locale);
+const example = posts.find((item) => item.slug === slug);
+const apiUrl = import.meta.env.LOCALDEPTH_API_URL || 'http://localhost:4000/api';
+let destination: Destination | null = null;
+let localizationError = '';
+
+if (!example) {
+  try {
+    const languageQuery = locale === 'es' ? '' : `?lang=${locale}`;
+    const response = await fetch(`${apiUrl}/content/destinations/${encodeURIComponent(slug)}${languageQuery}`);
+    if (response.status === 404) {
+      Astro.response.status = 404;
+    } else if (!response.ok) {
+      throw new Error(`Content API returned HTTP ${response.status}`);
+    } else {
+      const payload = (await response.json()) as {
+        success?: boolean;
+        data?: Destination;
+        error?: string;
+      };
+      if (!payload.success || !payload.data) {
+        throw new Error(payload.error || 'Content API returned an invalid destination');
+      }
+      if (payload.data.status === 'published') {
+        destination = payload.data;
+      } else {
+        Astro.response.status = 404;
+      }
+    }
+  } catch (error) {
+    Astro.response.status = 503;
+    if (locale !== 'es') {
+      localizationError = error instanceof Error ? error.message : copy.translationUnavailable;
+    }
+    console.error(`Could not load destination guide "${slug}":`, error);
+  }
+}
+
+const guide = example?.guide || destination?.guide;
+const centerLatitude = example?.coordinates.latitude ?? destination?.latitude;
+const centerLongitude = example?.coordinates.longitude ?? destination?.longitude;
+const sourceGuidePage: TravelGuidePage | null =
+  guide && centerLatitude !== null && centerLatitude !== undefined &&
+  centerLongitude !== null && centerLongitude !== undefined
+    ? {
+        slug,
+        destination: example?.destination || `${destination?.name}, ${destination?.country}`,
+        category: example?.category || 'Ciudad',
+        title: guide.headline || `Qué ver en ${destination?.name}`,
+        excerpt: example?.excerpt || destination?.description || '',
+        image: example
+          ? getPostImage(example.image, 1800)
+          : destination?.heroImageUrl || '',
+        alt: example?.alt || `Paisaje de ${destination?.name}, ${destination?.country}`,
+        latitude: centerLatitude,
+        longitude: centerLongitude,
+        bestTime: example?.bestTime || destination?.bestTimeToVisit || 'Consulta la temporada antes de viajar',
+        suggestedDays: guide.suggestedDays,
+        averageDailyBudget: example?.averageDailyBudget ?? destination?.averageDailyBudget ?? null,
+        currency: example?.currency || destination?.currency || 'EUR',
+        language: example?.language || destination?.language || '—',
+        introduction: guide.introduction,
+        gettingAround: guide.gettingAround,
+        placesToVisit: guide.placesToVisit,
+        typicalFoods: guide.typicalFoods || [],
+        travelTips: guide.travelTips,
+        faqs: guide.faqs,
+        isExample: Boolean(example),
+      }
+    : null;
+
+let guidePage = sourceGuidePage;
+if (guidePage && locale !== 'es' && !localizationError) {
+  try {
+    if (destination?.translations?.[locale]) {
+      const translation = destination.translations[locale];
+      const translatedGuide = translation.guide;
+      guidePage = {
+        ...guidePage,
+        destination: `${translation.name}, ${translation.country}`,
+        category: copy.cityCategory,
+        title: translatedGuide?.headline || guidePage.title,
+        excerpt: translation.description,
+        bestTime: translation.bestTimeToVisit || guidePage.bestTime,
+        language: translation.language || guidePage.language,
+        introduction: translatedGuide?.introduction || guidePage.introduction,
+        gettingAround: translatedGuide?.gettingAround || guidePage.gettingAround,
+        placesToVisit: translatedGuide?.placesToVisit || guidePage.placesToVisit,
+        typicalFoods: translatedGuide?.typicalFoods || guidePage.typicalFoods,
+        travelTips: translatedGuide?.travelTips || guidePage.travelTips,
+        faqs: translatedGuide?.faqs || guidePage.faqs,
+      };
+    } else {
+      guidePage = await translateContent(guidePage, locale);
+    }
+  } catch (error) {
+    localizationError = error instanceof Error ? error.message : copy.translationUnavailable;
+    guidePage = null;
+    Astro.response.status = 503;
+    console.error(`Could not translate destination guide "${slug}" to "${locale}":`, error);
+  }
+}
+
+let relatedPosts = posts.filter((item) => item.slug !== slug).slice(0, 3);
+if (locale !== 'es' && !localizationError) {
+  try {
+    relatedPosts = await translateContent(relatedPosts, locale);
+  } catch (error) {
+    localizationError = error instanceof Error ? error.message : copy.translationUnavailable;
+    guidePage = null;
+    Astro.response.status = 503;
+    console.error(`Could not translate related guides to "${locale}":`, error);
+  }
+}
+let engagement: DestinationEngagement = {
+  averageRating: 0,
+  ratingCount: 0,
+  commentCount: 0,
+  comments: [],
+};
+let engagementError = '';
+if (guidePage) {
+  try {
+    const response = await fetch(`${apiUrl}/content/destinations/${encodeURIComponent(slug)}/engagement`);
+    if (!response.ok) throw new Error(`Content API returned HTTP ${response.status}`);
+    const payload = (await response.json()) as { success?: boolean; data?: DestinationEngagement; error?: string };
+    if (!payload.success || !payload.data) throw new Error(payload.error || 'Content API returned invalid engagement data');
+    engagement = payload.data;
+  } catch (error) {
+    engagementError = copy.engagementUnavailable;
+    console.error(`Could not load community feedback for destination "${slug}":`, error);
+  }
+}
+const latitude = guidePage?.latitude ?? 0;
+const longitude = guidePage?.longitude ?? 0;
+const mapBounds = [
+  longitude - 0.08,
+  latitude - 0.05,
+  longitude + 0.08,
+  latitude + 0.05,
+]
+  .map((coordinate) => coordinate.toFixed(5))
+  .join('%2C');
+const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${mapBounds}&layer=mapnik&marker=${latitude}%2C${longitude}`;
+const mapLink = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=12/${latitude}/${longitude}`;
+const title = guidePage ? `${guidePage.title} — LocalDepth` : `${copy.notFound} — LocalDepth`;
+const shareTitle = guidePage?.title || title;
+const shareUrl = Astro.url.href;
+const currencyCode = guidePage?.currency.toUpperCase() || '';
+const currencyName =
+  guidePage && /^[A-Z]{3}$/.test(currencyCode)
+    ? new Intl.DisplayNames([locale], { type: 'currency' }).of(currencyCode) || currencyCode
+    : currencyCode;
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="description" content={guidePage?.excerpt || copy.travelGuide} />
+    <meta name="theme-color" content="#f5f3ec" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content={shareTitle} />
+    <meta property="og:description" content={guidePage?.excerpt || copy.travelGuide} />
+    <meta property="og:url" content={shareUrl} />
+    <meta property="og:image" content={guidePage?.image || ''} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={shareTitle} />
+    <meta name="twitter:description" content={guidePage?.excerpt || copy.travelGuide} />
+    <meta name="twitter:image" content={guidePage?.image || ''} />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://images.unsplash.com" />
+    <link rel="preconnect" href="https://www.openstreetmap.org" />
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap');
+
+      :root {
+        font-family: 'DM Sans', sans-serif;
+        color: #20231f;
+        background: #f5f3ec;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        --paper: #f5f3ec;
+        --ink: #20231f;
+        --muted: #686b62;
+        --green: #244f3d;
+        --lime: #d6ed72;
+        --line: rgba(32, 35, 31, 0.16);
+        --serif: 'Playfair Display', Georgia, serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      a:focus-visible {
+        outline: 3px solid #a0bf30;
+        outline-offset: 4px;
+      }
+
+      .site-header {
+        position: sticky;
+        z-index: 20;
+        top: 0;
+        display: flex;
+        width: 100%;
+        height: 78px;
+        align-items: center;
+        justify-content: space-between;
+        padding-inline: max(24px, calc((100vw - 1160px) / 2));
+        border-bottom: 1px solid var(--line);
+        background: rgba(245, 243, 236, 0.96);
+        backdrop-filter: blur(14px);
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.05em;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--green);
+        color: var(--lime);
+        font-family: var(--serif);
+        font-size: 20px;
+        font-style: italic;
+      }
+
+      .back-link {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .back-link:hover {
+        color: var(--green);
+      }
+
+      .language-switcher {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        margin-left: 12px;
+      }
+
+      .language-switcher a {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        place-items: center;
+        border: 1px solid transparent;
+        border-radius: 50%;
+        font-size: 15px;
+        line-height: 1;
+        transition: background 160ms ease, border-color 160ms ease;
+      }
+
+      .language-switcher a:hover,
+      .language-switcher a[aria-current='page'] {
+        border-color: rgba(36, 79, 61, 0.22);
+        background: #e9ecd9;
+      }
+
+      .language-switcher a:focus-visible {
+        outline: 3px solid #a0bf30;
+        outline-offset: 2px;
+      }
+
+      .translation-error {
+        width: min(1160px, calc(100% - 48px));
+        margin: 18px auto 0;
+        padding: 14px 17px;
+        border: 1px solid #ead7a5;
+        border-radius: 8px;
+        background: #fff3d6;
+        color: #704c0e;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .translation-error h1 {
+        margin: 0 0 5px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .translation-error p {
+        margin: 0;
+      }
+
+      .translation-error a {
+        text-decoration: underline;
+      }
+
+      .back-to-top {
+        position: fixed;
+        z-index: 5;
+        right: max(24px, calc((100vw - 1160px) / 2));
+        bottom: 24px;
+        display: grid;
+        width: 48px;
+        height: 48px;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 8px 24px rgba(32, 35, 31, 0.2);
+        color: white;
+        font-size: 24px;
+        line-height: 1;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(10px);
+        transition: opacity 180ms ease, transform 180ms ease, background 180ms ease;
+        visibility: hidden;
+      }
+
+      .back-to-top.is-visible {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+        visibility: visible;
+      }
+
+      .back-to-top:hover {
+        background: #173a2b;
+      }
+
+      .back-to-top:focus-visible {
+        outline: 3px solid #a0bf30;
+        outline-offset: 4px;
+      }
+
+      .article {
+        width: min(1080px, calc(100% - 48px));
+        margin: 0 auto;
+        padding: 37px 0 90px;
+      }
+
+      .breadcrumbs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        margin-bottom: 42px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .breadcrumbs a:hover {
+        color: var(--green);
+      }
+
+      .breadcrumbs span:last-child {
+        color: var(--ink);
+      }
+
+      .article-heading {
+        max-width: 850px;
+        margin: 0 auto 31px;
+        text-align: center;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--green);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #9fba44;
+        content: '';
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin: 17px 0 15px;
+        font-family: var(--serif);
+        font-size: clamp(43px, 7vw, 76px);
+        font-weight: 500;
+        letter-spacing: -0.065em;
+        line-height: 1.02;
+      }
+
+      .dek {
+        max-width: 690px;
+        margin: 0 auto;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.8;
+      }
+
+      .byline {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        margin-top: 21px;
+        color: var(--muted);
+        font-size: 9px;
+        letter-spacing: 0.04em;
+      }
+
+      .byline strong {
+        color: var(--ink);
+      }
+
+      .byline-dot {
+        color: #a1a394;
+      }
+
+      .share-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .share-actions a,
+      .share-actions button {
+        min-height: 34px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fffefa;
+        color: var(--ink);
+        font: inherit;
+        font-size: 10px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .share-actions a:hover,
+      .share-actions button:hover {
+        border-color: var(--green);
+        color: var(--green);
+      }
+
+      .share-actions .share-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .share-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 16px;
+      }
+
+      .share-status {
+        flex-basis: 100%;
+        min-height: 14px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .community {
+        margin-top: 58px;
+        padding: 30px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fbfaf6;
+      }
+
+      .community h2 {
+        margin-bottom: 8px;
+      }
+
+      .community-intro,
+      .community-status {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .community-rating {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 5px 15px;
+        margin: 18px 0 27px;
+      }
+
+      .rating-stars {
+        display: flex;
+        gap: 5px;
+      }
+
+      .rating-star {
+        min-width: 42px;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background: #fffefa;
+        color: #a37720;
+        font-size: 23px;
+        cursor: pointer;
+      }
+
+      .rating-star[aria-pressed='true'],
+      .rating-star:hover {
+        border-color: #c49a38;
+        background: #fff2ce;
+      }
+
+      .rating-summary {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .community-comments {
+        display: grid;
+        gap: 12px;
+        margin: 17px 0 25px;
+      }
+
+      .community-comment {
+        padding: 14px 16px;
+        border: 1px solid rgba(32, 35, 31, 0.1);
+        border-radius: 7px;
+        background: white;
+      }
+
+      .community-comment header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 6px;
+        margin-bottom: 7px;
+        font-size: 11px;
+      }
+
+      .community-comment time {
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .community-comment p {
+        margin: 0;
+        color: #565a52;
+        font-size: 12px;
+        line-height: 1.7;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .comment-form {
+        display: grid;
+        gap: 11px;
+        max-width: 650px;
+      }
+
+      .comment-form label {
+        display: grid;
+        gap: 6px;
+        color: var(--ink);
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .comment-form input,
+      .comment-form textarea {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fffefa;
+        color: var(--ink);
+        font: inherit;
+        font-size: 12px;
+      }
+
+      .comment-form textarea {
+        min-height: 100px;
+        resize: vertical;
+      }
+
+      .comment-form button {
+        justify-self: start;
+        min-height: 42px;
+        padding: 0 18px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--green);
+        color: white;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .comment-form button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      .cover {
+        position: relative;
+        height: clamp(310px, 53vw, 590px);
+        overflow: hidden;
+        border-radius: 8px;
+        background: #d5d2c5;
+      }
+
+      .cover img,
+      .gallery img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .cover::after {
+        position: absolute;
+        inset: 55% 0 0;
+        background: linear-gradient(transparent, rgba(18, 26, 21, 0.55));
+        content: '';
+        pointer-events: none;
+      }
+
+      .cover-caption {
+        position: absolute;
+        z-index: 1;
+        right: 25px;
+        bottom: 22px;
+        left: 25px;
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        color: white;
+        font-size: 10px;
+      }
+
+      .cover-caption strong {
+        font-family: var(--serif);
+        font-size: 24px;
+        font-weight: 500;
+      }
+
+      .article-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 265px;
+        align-items: start;
+        gap: 70px;
+        margin-top: 54px;
+      }
+
+      .article-body {
+        min-width: 0;
+      }
+
+      .article-body .lead {
+        color: #454a41;
+        font-family: var(--serif);
+        font-size: 23px;
+        line-height: 1.55;
+      }
+
+      .article-body p {
+        margin-bottom: 20px;
+        color: #565a52;
+        font-size: 13px;
+        line-height: 1.9;
+      }
+
+      .article-body h2 {
+        margin: 44px 0 14px;
+        font-family: var(--serif);
+        font-size: 34px;
+        font-weight: 500;
+        letter-spacing: -0.04em;
+      }
+
+      .highlights {
+        display: grid;
+        gap: 24px;
+        margin: 24px 0;
+      }
+
+      .highlight {
+        overflow: hidden;
+        border: 1px solid rgba(32, 35, 31, 0.1);
+        border-radius: 8px;
+        background: #fbfaf6;
+      }
+
+      .highlight img {
+        display: block;
+        width: 100%;
+        max-height: 340px;
+        aspect-ratio: 1.8;
+        object-fit: cover;
+      }
+
+      .highlight-copy {
+        padding: 18px 20px 20px;
+      }
+
+      .highlight-copy h3 {
+        margin-bottom: 8px;
+        font-family: var(--serif);
+        font-size: 24px;
+        font-weight: 500;
+      }
+
+      .highlight-copy p {
+        margin-bottom: 10px;
+      }
+
+      .highlight-map {
+        color: var(--green);
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      .highlight-map:hover {
+        text-decoration: underline;
+      }
+
+      .tip-list {
+        display: grid;
+        gap: 12px;
+        margin: 20px 0 28px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .tip-list li {
+        position: relative;
+        padding-left: 24px;
+        color: #565a52;
+        font-size: 12px;
+        line-height: 1.75;
+      }
+
+      .tip-list li::before {
+        position: absolute;
+        left: 0;
+        color: var(--green);
+        content: '✳';
+      }
+
+      .food-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin: 20px 0 30px;
+      }
+
+      .food-card {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 11px;
+        padding: 8px;
+        border: 1px solid rgba(32, 35, 31, 0.1);
+        border-radius: 8px;
+        background: #fbfaf6;
+      }
+
+      .food-card img {
+        display: block;
+        width: 68px;
+        height: 64px;
+        flex: 0 0 68px;
+        border-radius: 5px;
+        object-fit: cover;
+        background: #dedbd0;
+      }
+
+      .food-card h3 {
+        margin: 0;
+        font-family: var(--serif);
+        font-size: 15px;
+        font-weight: 500;
+        line-height: 1.3;
+      }
+
+      .food-card p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 9px;
+        line-height: 1.5;
+      }
+
+      .faq-list {
+        display: grid;
+        gap: 11px;
+        margin-top: 18px;
+      }
+
+      .faq-list details {
+        padding: 15px 17px;
+        border: 1px solid rgba(32, 35, 31, 0.1);
+        border-radius: 7px;
+        background: #fbfaf6;
+      }
+
+      .faq-list summary {
+        color: var(--ink);
+        cursor: pointer;
+        font-family: var(--serif);
+        font-size: 16px;
+      }
+
+      .faq-list details p {
+        margin: 12px 0 0;
+      }
+
+      .gallery {
+        display: grid;
+        height: 285px;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 12px;
+        margin: 32px 0 15px;
+      }
+
+      .gallery img {
+        overflow: hidden;
+        border-radius: 6px;
+        background: #dedbd0;
+      }
+
+      .image-note {
+        margin: 0 !important;
+        color: #85877e !important;
+        font-size: 9px !important;
+      }
+
+      .sample-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin: 8px 0 20px;
+        padding: 8px 11px;
+        border-radius: 999px;
+        background: #e9ecd9;
+        color: var(--green);
+        font-size: 9px;
+        font-weight: 600;
+      }
+
+      .sample-label span {
+        font-family: var(--serif);
+        font-size: 14px;
+        font-style: italic;
+      }
+
+      .travel-facts {
+        position: sticky;
+        top: 22px;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfaf6;
+      }
+
+      .travel-facts h2 {
+        margin-bottom: 19px;
+        font-family: var(--serif);
+        font-size: 24px;
+        font-weight: 500;
+      }
+
+      .fact {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 0;
+        border-top: 1px solid var(--line);
+        font-size: 10px;
+      }
+
+      .fact span {
+        color: var(--muted);
+      }
+
+      .fact strong {
+        text-align: right;
+      }
+
+      .map-card {
+        margin-top: 16px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfaf6;
+      }
+
+      .map-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 17px 17px 13px;
+      }
+
+      .map-heading h2 {
+        margin: 0;
+        font-family: var(--serif);
+        font-size: 21px;
+        font-weight: 500;
+      }
+
+      .map-link {
+        color: var(--green);
+        font-size: 9px;
+        font-weight: 600;
+      }
+
+      .map-link:hover {
+        text-decoration: underline;
+      }
+
+      .map-card iframe {
+        display: block;
+        width: 100%;
+        height: 235px;
+        border: 0;
+        background: #e4e6da;
+      }
+
+      .map-caption {
+        margin: 0;
+        padding: 11px 15px 14px;
+        color: var(--muted);
+        font-size: 9px;
+        line-height: 1.6;
+      }
+
+      .related {
+        margin-top: 78px;
+        padding-top: 34px;
+        border-top: 1px solid var(--line);
+      }
+
+      .related-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        margin-bottom: 21px;
+      }
+
+      .related-heading .eyebrow {
+        margin-bottom: 9px;
+      }
+
+      .related-heading h2 {
+        margin: 0;
+        font-family: var(--serif);
+        font-size: 32px;
+        font-weight: 500;
+        letter-spacing: -0.035em;
+      }
+
+      .related-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+
+      .related-card {
+        overflow: hidden;
+        border: 1px solid rgba(32, 35, 31, 0.08);
+        border-radius: 7px;
+        background: #fbfaf6;
+        transition: transform 180ms ease;
+      }
+
+      .related-card:hover {
+        transform: translateY(-3px);
+      }
+
+      .related-card img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1.45;
+        object-fit: cover;
+      }
+
+      .related-card div {
+        padding: 13px;
+      }
+
+      .related-card span {
+        color: var(--green);
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .related-card h3 {
+        margin: 7px 0 0;
+        font-family: var(--serif);
+        font-size: 17px;
+        font-weight: 500;
+        line-height: 1.3;
+      }
+
+      .site-footer {
+        display: flex;
+        width: min(1160px, calc(100% - 48px));
+        min-height: 90px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin: 0 auto;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      .not-found {
+        display: grid;
+        min-height: 80vh;
+        place-content: center;
+        justify-items: start;
+        padding: 24px;
+      }
+
+      .not-found h1 {
+        max-width: 600px;
+        margin-top: 50px;
+        font-size: clamp(42px, 8vw, 70px);
+      }
+
+      .not-found p {
+        margin-bottom: 22px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      @media (max-width: 760px) {
+        .article {
+          padding-top: 27px;
+        }
+
+        .breadcrumbs {
+          margin-bottom: 30px;
+        }
+
+        .article-layout {
+          grid-template-columns: 1fr;
+          gap: 24px;
+          margin-top: 37px;
+        }
+
+        .travel-facts {
+          position: static;
+          grid-row: 1;
+        }
+
+        .fact {
+          max-width: 420px;
+        }
+
+        .map-card {
+          margin-top: 10px;
+        }
+
+        .gallery {
+          height: 240px;
+        }
+
+        .related-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .food-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .food-card img {
+          width: 58px;
+          height: 56px;
+          flex-basis: 58px;
+        }
+
+        .not-found {
+          width: min(100% - 40px, 560px);
+          margin: auto;
+          padding: 20px 0;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .article,
+        .site-footer {
+          width: calc(100% - 36px);
+        }
+
+        .site-header {
+          height: 68px;
+          padding-inline: 18px;
+        }
+
+        .back-to-top {
+          right: 18px;
+          bottom: 18px;
+          width: 44px;
+          height: 44px;
+        }
+
+        .back-link {
+          font-size: 10px;
+        }
+
+        .header-actions {
+          gap: 5px;
+        }
+
+        .language-switcher {
+          gap: 0;
+          margin-left: 4px;
+        }
+
+        .language-switcher a {
+          width: 26px;
+          font-size: 14px;
+        }
+
+        .article {
+          padding-bottom: 62px;
+        }
+
+        .article-heading {
+          margin-bottom: 23px;
+          text-align: left;
+        }
+
+        h1 {
+          font-size: clamp(42px, 12vw, 58px);
+        }
+
+        .dek {
+          font-size: 12px;
+        }
+
+        .byline {
+          justify-content: flex-start;
+        }
+
+        .cover {
+          height: 330px;
+        }
+
+        .cover-caption {
+          right: 16px;
+          bottom: 17px;
+          left: 16px;
+        }
+
+        .cover-caption strong {
+          font-size: 20px;
+        }
+
+        .cover-caption span {
+          max-width: 110px;
+          text-align: right;
+        }
+
+        .article-body .lead {
+          font-size: 20px;
+        }
+
+        .article-body p {
+          font-size: 12px;
+        }
+
+        .article-body h2 {
+          margin-top: 35px;
+          font-size: 30px;
+        }
+
+        .gallery {
+          height: 185px;
+          gap: 8px;
+        }
+
+        .travel-facts {
+          padding: 18px;
+        }
+
+        .related {
+          margin-top: 57px;
+        }
+
+        .related-heading h2 {
+          font-size: 27px;
+        }
+
+        .related-grid {
+          gap: 10px;
+        }
+
+        .related-card h3 {
+          font-size: 15px;
+        }
+
+        .related-card div {
+          padding: 10px;
+        }
+
+        .site-footer {
+          min-height: 82px;
+          font-size: 8px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    {localizationError ? (
+      <main class="translation-error" role="alert">
+        <h1>{copy.translationUnavailable}</h1>
+        <p>{localizationError}</p>
+        <nav class="language-switcher" aria-label={localeLabels[locale]}>
+          {locales.map((language) => (
+            <a
+              href={localizedUrl(Astro.url.pathname, language)}
+              aria-label={localeLabels[language]}
+              aria-current={language === locale ? 'page' : undefined}
+              title={localeLabels[language]}
+            >{localeFlags[language]}</a>
+          ))}
+        </nav>
+        <a href={localizedUrl('/', 'es')}>{copy.errorHome}</a>
+      </main>
+    ) : guidePage ? (
+      <>
+        <header class="site-header" id="page-top">
+          <a class="brand" href={localizedUrl('/', locale)} aria-label={`LocalDepth, ${copy.home.toLowerCase()}`}>
+            <BrandMark size={32} />
+            <span>localdepth</span>
+          </a>
+          <div class="header-actions">
+            <a class="back-link" href={localizedUrl('/#cuaderno', locale)}>{copy.guideNotebook}</a>
+            <nav class="language-switcher" aria-label={localeLabels[locale]}>
+              {locales.map((language) => (
+                <a
+                  href={localizedUrl(Astro.url.pathname, language)}
+                  aria-label={localeLabels[language]}
+                  aria-current={language === locale ? 'page' : undefined}
+                  title={localeLabels[language]}
+                >{localeFlags[language]}</a>
+              ))}
+            </nav>
+          </div>
+        </header>
+
+        <main class="article">
+          <nav class="breadcrumbs" aria-label={copy.breadcrumbs}>
+            <a href={localizedUrl('/', locale)}>{copy.home}</a><span>/</span><a href={localizedUrl('/#cuaderno', locale)}>{copy.journalLabel}</a><span>/</span>
+            <span>{guidePage.destination}</span>
+          </nav>
+
+          <header class="article-heading">
+            <span class="eyebrow">{guidePage.destination} · {guidePage.category}</span>
+            <h1>{guidePage.title}</h1>
+            <p class="dek">{guidePage.excerpt}</p>
+            <div class="byline">
+              <strong>{copy.localJournal}</strong><span class="byline-dot">·</span>
+              <span>{guidePage.isExample ? copy.sampleGuide : copy.travelGuide}</span><span class="byline-dot">·</span>
+              <span>{guidePage.suggestedDays} {copy.days(guidePage.suggestedDays)} {guidePage.suggestedDays === 1 ? copy.suggestedDay : copy.suggestedDays}</span>
+            </div>
+            <nav class="share-actions" aria-label={copy.shareGuide}>
+              <a
+                class="share-button"
+                aria-label={copy.facebook}
+                title={copy.facebook}
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13.4 21v-8.2h2.8l.4-3.2h-3.2v-2c0-.9.3-1.6 1.6-1.6h1.7V3.1c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v2.3H7.2v3.2H10V21h3.4Z"/></svg>
+                Facebook
+              </a>
+              <a
+                class="share-button"
+                aria-label={copy.whatsapp}
+                title={copy.whatsapp}
+                href={`https://wa.me/?text=${encodeURIComponent(`${shareTitle} ${shareUrl}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.5 3.5A11.8 11.8 0 0 0 12.1 0C5.5 0 .1 5.4.1 12c0 2.1.6 4.2 1.7 6L0 24l6.2-1.6a12 12 0 0 0 5.9 1.5h.1c6.6 0 12-5.4 12-12a11.9 11.9 0 0 0-3.7-8.4ZM12.1 22c-1.8 0-3.6-.5-5.1-1.4l-.4-.2-3.7 1 1-3.6-.3-.4a9.9 9.9 0 0 1-1.5-5.3C2.1 6.6 6.6 2 12.1 2a9.9 9.9 0 0 1 7 2.9 9.9 9.9 0 0 1 2.9 7c0 5.6-4.5 10.1-9.9 10.1Zm5.5-7.5c-.3-.2-1.7-.9-2-1s-.5-.2-.7.2c-.2.3-.8 1-.9 1.2-.2.2-.3.2-.7.1-.3-.2-1.3-.5-2.5-1.6-.9-.8-1.6-1.8-1.8-2.1-.2-.3 0-.5.1-.7l.5-.6c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.6s-.7-1.6-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.7s1.2 3.1 1.4 3.3c.2.2 2.3 3.5 5.5 4.9.8.3 1.4.5 1.9.6.8.3 1.5.2 2 .1.6-.1 1.7-.7 1.9-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.7-.4Z"/></svg>
+                WhatsApp
+              </a>
+              <button
+                type="button"
+                class="share-button"
+                data-copy-share-link
+                data-copy-success={copy.copySuccess}
+                data-copy-failure={copy.copyFailure}
+                aria-label={copy.instagram}
+                title={copy.instagram}
+              >
+                <svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Zm0 2.2A2.8 2.8 0 0 0 4.2 7v10A2.8 2.8 0 0 0 7 19.8h10a2.8 2.8 0 0 0 2.8-2.8V7A2.8 2.8 0 0 0 17 4.2H7Zm5 2.3a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Zm0 2.2a3.3 3.3 0 1 0 0 6.6 3.3 3.3 0 0 0 0-6.6Zm5.7-3.9a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z"/></svg>
+                Instagram
+              </button>
+              <button
+                type="button"
+                data-native-share
+                data-share-error={copy.shareError}
+                data-share-done={copy.shareDone}
+                data-share-cancelled={copy.shareCancelled}
+              >
+                {copy.moreShareOptions}
+              </button>
+              <p class="share-status" aria-live="polite" data-share-status></p>
+            </nav>
+          </header>
+
+          <figure class="cover">
+            <img src={guidePage.image} alt={guidePage.alt} fetchpriority="high" />
+            <figcaption class="cover-caption">
+              <strong>{guidePage.destination}</strong>
+              <span>{latitude.toFixed(4)}°, {longitude.toFixed(4)}°</span>
+            </figcaption>
+          </figure>
+
+          <div class="article-layout">
+            <article class="article-body">
+              <p class="lead">{guidePage.introduction}</p>
+              <p>{guidePage.excerpt}</p>
+
+              <h2>{copy.placesHeading(guidePage.destination)}</h2>
+              <div class="highlights">
+                {guidePage.placesToVisit.map((place, index) => (
+                  <article class="highlight">
+                    {place.imageUrl && (
+                      <img src={place.imageUrl} alt={`${place.name}, ${guidePage.destination}`} loading="lazy" decoding="async" />
+                    )}
+                    <div class="highlight-copy">
+                      <h3>{index + 1}. {place.name}</h3>
+                      <p>{place.description}</p>
+                      {place.latitude != null && place.longitude != null && (
+                        <a
+                          class="highlight-map"
+                          href={`https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {copy.mapPlace}
+                        </a>
+                      )}
+                      {(place.latitude == null || place.longitude == null) && (
+                        <a
+                          class="highlight-map"
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name}, ${guidePage.destination}`)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {copy.mapPlace}
+                        </a>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              {guidePage.typicalFoods.length > 0 && (
+                <>
+                  <h2>{copy.foodsHeading(guidePage.destination)}</h2>
+                  <p>{copy.foodsIntro}</p>
+                  <div class="food-grid">
+                    {guidePage.typicalFoods.map((food) => (
+                      <article class="food-card">
+                        <img src={food.imageUrl} alt={copy.foodImageAlt(food.name, guidePage.destination)} loading="lazy" decoding="async" />
+                        <div>
+                          <h3>{food.name}</h3>
+                          <p>{copy.ingredients} {food.ingredients?.join(', ') || copy.ingredientsMissing}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <h2>{copy.gettingAround}</h2>
+              <p>{guidePage.gettingAround}</p>
+
+              <h2>{copy.travelTips}</h2>
+              <ul class="tip-list">
+                {guidePage.travelTips.map((tip) => <li>{tip}</li>)}
+              </ul>
+
+              <h2>{copy.faqs}</h2>
+              <div class="faq-list">
+                {guidePage.faqs.map((faq) => (
+                  <details>
+                    <summary>{faq.question}</summary>
+                    <p>{faq.answer}</p>
+                  </details>
+                ))}
+              </div>
+              {guidePage.isExample && (
+                <div class="sample-label"><span>i</span> {copy.demoContent}</div>
+              )}
+            </article>
+
+            <aside>
+              <section class="travel-facts" aria-labelledby="facts-title">
+                <h2 id="facts-title">{copy.beforeYouGo}</h2>
+                <div class="fact"><span>{copy.destination}</span><strong>{guidePage.destination}</strong></div>
+                <div class="fact"><span>{copy.bestTime}</span><strong>{guidePage.bestTime}</strong></div>
+                <div class="fact"><span>{copy.suggestedTime}</span><strong>{guidePage.suggestedDays} {copy.days(guidePage.suggestedDays)}</strong></div>
+                <div class="fact"><span>{copy.currency}</span><strong>{currencyName} ({currencyCode})</strong></div>
+                {guidePage.averageDailyBudget !== null && (
+                  <div class="fact"><span>{copy.dailyBudget}</span><strong>{guidePage.averageDailyBudget.toLocaleString(copy.dayLocale)} {currencyCode}</strong></div>
+                )}
+                <div class="fact"><span>{copy.language}</span><strong>{guidePage.language}</strong></div>
+                <div class="fact"><span>{copy.tripType}</span><strong>{guidePage.category}</strong></div>
+              </section>
+              <section class="map-card" aria-labelledby="map-title">
+                <div class="map-heading">
+                  <h2 id="map-title">{copy.mapTitle}</h2>
+                  <a class="map-link" href={mapLink} target="_blank" rel="noreferrer">{copy.openMap}</a>
+                </div>
+                <iframe
+                  src={mapUrl}
+                  title={`${copy.mapTitle}: ${guidePage.destination}`}
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                ></iframe>
+                <p class="map-caption">
+                  {copy.mapCaption}
+                </p>
+              </section>
+            </aside>
+          </div>
+
+          <section
+            class="community"
+            aria-labelledby="community-title"
+            data-engagement-root
+            data-api-base={apiUrl}
+            data-destination-slug={slug}
+            data-rating-success={copy.ratingSuccess}
+            data-rating-error={copy.ratingError}
+            data-comment-success={copy.commentSuccess}
+            data-comment-count-format={copy.commentCount(0)}
+          >
+            <h2 id="community-title">{copy.communityTitle}</h2>
+            <p class="community-intro">{copy.rateDestination}: {guidePage.destination}</p>
+            {engagementError ? (
+              <p class="community-status" role="status">{engagementError}</p>
+            ) : (
+              <>
+                <div class="community-rating">
+                  <div class="rating-stars" role="group" aria-label={copy.rateDestination} data-rating-group>
+                    {[1, 2, 3, 4, 5].map((score) => (
+                      <button
+                        type="button"
+                        class="rating-star"
+                        data-rating={score}
+                        aria-label={`${score} / 5`}
+                        aria-pressed="false"
+                      >★</button>
+                    ))}
+                  </div>
+                  <span
+                    class="rating-summary"
+                    data-rating-summary
+                    data-rating-template={copy.ratingSummary('{average}', 1).replace('1 ', '{count} ')}
+                    aria-live="polite"
+                  >{copy.ratingSummary(engagement.averageRating.toFixed(1), engagement.ratingCount)}</span>
+                  <span class="community-status" data-rating-status aria-live="polite"></span>
+                </div>
+                <h3 data-comment-heading>{copy.commentCount(engagement.commentCount)}</h3>
+                <div class="community-comments" data-comments>
+                  {engagement.comments.length ? engagement.comments.map((comment) => (
+                    <article class="community-comment">
+                      <header>
+                        <strong>{comment.authorName}</strong>
+                        <time datetime={comment.createdAt}>{new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</time>
+                      </header>
+                      <p>{comment.body}</p>
+                    </article>
+                  )) : <p class="community-intro" data-no-comments>{copy.noComments}</p>}
+                </div>
+                <form class="comment-form" data-comment-form data-comment-error={copy.commentError}>
+                  <label>
+                    {copy.commentName}
+                    <input name="authorName" type="text" maxlength="50" autocomplete="name" required />
+                  </label>
+                  <label>
+                    {copy.commentBody}
+                    <textarea name="body" maxlength="1000" required></textarea>
+                  </label>
+                  <button type="submit">{copy.commentSubmit}</button>
+                  <p class="community-status" data-comment-status aria-live="polite"></p>
+                </form>
+              </>
+            )}
+          </section>
+
+          <section class="related" aria-labelledby="related-title">
+            <div class="related-heading">
+              <div>
+                <span class="eyebrow">{copy.continueExploring}</span>
+                <h2 id="related-title">{copy.morePlaces}</h2>
+              </div>
+            </div>
+            <div class="related-grid">
+              {relatedPosts.map((related) => (
+                <a class="related-card" href={localizedUrl(`/viajes/${related.slug}/`, locale)}>
+                  <img src={getPostImage(related.image, 650)} alt={related.alt} loading="lazy" decoding="async" />
+                  <div>
+                    <span>{related.destination} · {related.category}</span>
+                    <h3>{related.guide.headline}</h3>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
+        </main>
+
+        <footer class="site-footer">
+          <a class="brand" href={localizedUrl('/', locale)}>
+            <BrandMark size={32} /><span>localdepth</span>
+          </a>
+          <span>{copy.guideFooter}</span>
+        </footer>
+      </>
+    ) : (
+      <main class="not-found">
+        <a class="brand" href={localizedUrl('/', locale)}>
+          <BrandMark size={32} /><span>localdepth</span>
+        </a>
+        <nav class="language-switcher" aria-label={localeLabels[locale]}>
+          {locales.map((language) => (
+            <a
+              href={localizedUrl(Astro.url.pathname, language)}
+              aria-label={localeLabels[language]}
+              aria-current={language === locale ? 'page' : undefined}
+              title={localeLabels[language]}
+            >{localeFlags[language]}</a>
+          ))}
+        </nav>
+        <h1>{copy.notFound}</h1>
+        <p>{copy.notFoundDescription}</p>
+        <a class="back-link" href={localizedUrl('/#cuaderno', locale)}>{copy.backToNotebook}</a>
+      </main>
+    )}
+    {guidePage && (
+      <a class="back-to-top" href="#page-top" aria-label={copy.backToTop} title={copy.backToTop} data-back-to-top>
+        <span aria-hidden="true">↑</span>
+      </a>
+    )}
+    <script>
+      const status = document.querySelector<HTMLElement>('[data-share-status]');
+      const copyLinkButton = document.querySelector<HTMLButtonElement>('[data-copy-share-link]');
+      const nativeShareButton = document.querySelector<HTMLButtonElement>('[data-native-share]');
+      const backToTopButton = document.querySelector<HTMLAnchorElement>('[data-back-to-top]');
+      const ratingGroup = document.querySelector<HTMLElement>('[data-rating-group]');
+      const ratingSummary = document.querySelector<HTMLElement>('[data-rating-summary]');
+      const ratingStatus = document.querySelector<HTMLElement>('[data-rating-status]');
+      const commentForm = document.querySelector<HTMLFormElement>('[data-comment-form]');
+      const commentList = document.querySelector<HTMLElement>('[data-comments]');
+      const commentHeading = document.querySelector<HTMLElement>('[data-comment-heading]');
+      const commentStatus = document.querySelector<HTMLElement>('[data-comment-status]');
+      const engagementRoot = document.querySelector<HTMLElement>('[data-engagement-root]');
+      const apiBase = engagementRoot?.dataset.apiBase || '/api';
+      const destinationSlug = engagementRoot?.dataset.destinationSlug || '';
+      const engagementUrl = `${apiBase}/content/destinations/${encodeURIComponent(destinationSlug)}`;
+
+      function updateBackToTopVisibility() {
+        backToTopButton?.classList.toggle('is-visible', window.scrollY > 500);
+      }
+
+      window.addEventListener('scroll', updateBackToTopVisibility, { passive: true });
+      backToTopButton?.addEventListener('click', (event) => {
+        event.preventDefault();
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      });
+      updateBackToTopVisibility();
+
+      async function copyGuideLink() {
+        if (!status) return;
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(window.location.href);
+          } else {
+            const input = document.createElement('textarea');
+            input.value = window.location.href;
+            input.setAttribute('readonly', '');
+            input.style.position = 'fixed';
+            input.style.opacity = '0';
+            document.body.append(input);
+            input.select();
+            const copied = document.execCommand('copy');
+            input.remove();
+            if (!copied) throw new Error('Clipboard access unavailable');
+          }
+          status.textContent = copyLinkButton?.dataset.copySuccess || '';
+        } catch {
+          status.textContent = `${copyLinkButton?.dataset.copyFailure || ''} ${window.location.href}`;
+        }
+      }
+
+      copyLinkButton?.addEventListener('click', copyGuideLink);
+      nativeShareButton?.addEventListener('click', async () => {
+        if (!status) return;
+        if (!navigator.share) {
+          await copyGuideLink();
+          return;
+        }
+        try {
+          await navigator.share({
+            title: document.title,
+            text: document.querySelector('h1')?.textContent || document.title,
+            url: window.location.href,
+          });
+          status.textContent = nativeShareButton?.dataset.shareDone || '';
+        } catch (error) {
+          status.textContent =
+            error instanceof DOMException && error.name === 'AbortError'
+              ? nativeShareButton?.dataset.shareCancelled || ''
+              : nativeShareButton?.dataset.shareError || '';
+        }
+      });
+
+      function getVoterKey() {
+        const keyName = `localdepth-rating:${destinationSlug}`;
+        let voterKey = window.localStorage.getItem(keyName);
+        if (!voterKey) {
+          if (!window.crypto?.randomUUID) throw new Error('Secure browser identifiers are unavailable');
+          voterKey = window.crypto.randomUUID();
+          window.localStorage.setItem(keyName, voterKey);
+        }
+        return voterKey;
+      }
+
+      function updateRatingButtons(selectedScore: number) {
+        ratingGroup?.querySelectorAll<HTMLButtonElement>('[data-rating]').forEach((button) => {
+          const score = Number(button.dataset.rating);
+          button.setAttribute('aria-pressed', String(score === selectedScore));
+          button.style.background = score <= selectedScore ? '#fff2ce' : '';
+          button.style.borderColor = score <= selectedScore ? '#c49a38' : '';
+        });
+      }
+
+      try {
+        const savedScore = Number(window.localStorage.getItem(`localdepth-rating-score:${destinationSlug}`));
+        if (savedScore >= 1 && savedScore <= 5) updateRatingButtons(savedScore);
+      } catch (error) {
+        console.error('Could not restore the saved destination rating:', error);
+      }
+
+      ratingGroup?.addEventListener('click', async (event) => {
+        const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-rating]');
+        if (!button || !ratingStatus || !ratingSummary) return;
+        button.disabled = true;
+        ratingStatus.textContent = '';
+        try {
+          const voterKey = getVoterKey();
+          const response = await fetch(`${engagementUrl}/ratings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ voterKey, score: Number(button.dataset.rating) }),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.success) throw new Error(payload.error || 'Rating request failed');
+          const score = Number(button.dataset.rating);
+          window.localStorage.setItem(`localdepth-rating-score:${destinationSlug}`, String(score));
+          updateRatingButtons(score);
+          const average = Number(payload.data.averageRating).toFixed(1);
+          const ratingCount = Number(payload.data.ratingCount);
+          ratingSummary.textContent = (ratingSummary.dataset.ratingTemplate || '')
+            .replace('{average}', average)
+            .replace('{count}', String(ratingCount));
+          ratingStatus.textContent = engagementRoot?.dataset.ratingSuccess || '';
+        } catch (error) {
+          console.error('Could not save destination rating:', error);
+          ratingStatus.textContent = engagementRoot?.dataset.ratingError || '';
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      commentForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!commentStatus || !commentList || !commentHeading) return;
+        const submitButton = commentForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+        const formData = new FormData(commentForm);
+        const authorName = String(formData.get('authorName') || '').trim();
+        const body = String(formData.get('body') || '').trim();
+        if (!authorName || !body) return;
+        if (submitButton) submitButton.disabled = true;
+        commentStatus.textContent = '';
+        try {
+          const response = await fetch(`${engagementUrl}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ authorName, body }),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.success) throw new Error(payload.error || 'Comment request failed');
+          commentList.querySelector('[data-no-comments]')?.remove();
+          const comment = document.createElement('article');
+          comment.className = 'community-comment';
+          const header = document.createElement('header');
+          const author = document.createElement('strong');
+          author.textContent = payload.data.authorName;
+          const date = document.createElement('time');
+          date.dateTime = payload.data.createdAt;
+          date.textContent = new Intl.DateTimeFormat(document.documentElement.lang, { dateStyle: 'medium' })
+            .format(new Date(payload.data.createdAt));
+          header.append(author, date);
+          const text = document.createElement('p');
+          text.textContent = payload.data.body;
+          comment.append(header, text);
+          commentList.prepend(comment);
+          const commentCount = Number(commentHeading.textContent?.match(/\d+/)?.[0] || 0) + 1;
+          commentHeading.textContent = (engagementRoot?.dataset.commentCountFormat || '').replace(/\d+/, String(commentCount));
+          commentForm.reset();
+          commentStatus.textContent = engagementRoot?.dataset.commentSuccess || '';
+        } catch (error) {
+          console.error('Could not post destination comment:', error);
+          commentStatus.textContent = commentForm.dataset.commentError || '';
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

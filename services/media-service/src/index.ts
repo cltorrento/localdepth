@@ -63,7 +63,7 @@ export async function handleMediaRequest(req: http.IncomingMessage, res: http.Se
       const size = body.size || 1024 * 250;
       const url =
         body.url ||
-        `${process.env.MINIO_PUBLIC_URL || 'http://localhost:9000/localdepth-media'}/${id}-${filename}`;
+        `${process.env.MEDIA_PUBLIC_URL || "/media"}/${id}-${filename}`;
 
       const mediaItem: MediaFile = {
         id,
@@ -118,7 +118,7 @@ export async function handleMediaRequest(req: http.IncomingMessage, res: http.Se
 
 const server = http.createServer(handleMediaRequest);
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   server.listen(PORT, () => {
     logger.info(`Media service running on port ${PORT}`);
   });

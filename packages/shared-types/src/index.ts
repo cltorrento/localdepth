@@ -31,6 +31,43 @@ export interface PaginatedResult<T> {
 // -------------------------------------------------------------
 export type DestinationType = 'country' | 'region' | 'city';
 
+export interface DestinationHighlight {
+  name: string;
+  description: string;
+  imageUrl?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export interface DestinationFood {
+  name: string;
+  imageUrl: string;
+  ingredients: string[];
+}
+
+export interface DestinationGuideContent {
+  headline?: string;
+  introduction: string;
+  gettingAround: string;
+  suggestedDays: number;
+  placesToVisit: DestinationHighlight[];
+  typicalFoods: DestinationFood[];
+  travelTips: string[];
+  faqs: FAQ[];
+}
+
+export type SiteLocale = 'es' | 'en' | 'it' | 'de';
+export type DestinationLocale = Exclude<SiteLocale, 'es'>;
+
+export interface LocalizedDestinationContent {
+  name: string;
+  country: string;
+  description: string;
+  language?: string | null;
+  bestTimeToVisit?: string | null;
+  guide?: DestinationGuideContent | null;
+}
+
 export interface Destination {
   id: UUID;
   slug: string;
@@ -47,10 +84,15 @@ export interface Destination {
   averageDailyBudget?: number | null;
   latitude?: number | null;
   longitude?: number | null;
+  guide?: DestinationGuideContent | null;
+  translations?: Partial<Record<DestinationLocale, LocalizedDestinationContent>>;
   status: PublishStatus;
   createdAt: string;
   updatedAt: string;
 }
+
+export type DestinationCreateInput = Pick<Destination, 'name' | 'type' | 'country'> &
+  Partial<Omit<Destination, 'id' | 'name' | 'type' | 'country' | 'createdAt' | 'updatedAt'>>;
 
 // -------------------------------------------------------------
 // Place Entity & Geolocation
@@ -203,6 +245,15 @@ export interface TripPlannerPreferences {
   pace: 'relaxed' | 'balanced' | 'intense';
   restrictions?: string[];
   avoidCrowds?: boolean;
+}
+
+export interface PersonalizedTripRequest extends TripPlannerPreferences {
+  email: string;
+  travelDate?: string | null;
+  itineraryConsent: boolean;
+  newsletterOptIn: boolean;
+  locale: SiteLocale;
+  company?: string;
 }
 
 export interface TripPlannerResponse {

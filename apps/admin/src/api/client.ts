@@ -1,4 +1,6 @@
-const API_BASE = 'http://localhost:4000/api';
+import type { DestinationCreateInput } from '@localdepth/shared-types';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 export function getAuthToken(): string | null {
   return localStorage.getItem('localdepth_admin_token');
@@ -46,8 +48,9 @@ export const api = {
   // Destinations
   getDestinations: () => request('/content/destinations'),
   getDestination: (idOrSlug: string) => request(`/content/destinations/${idOrSlug}`),
-  createDestination: (data: any) => request('/content/destinations', { method: 'POST', body: JSON.stringify(data) }),
-  updateDestination: (id: string, data: any) =>
+  createDestination: (data: DestinationCreateInput) =>
+    request('/content/destinations', { method: 'POST', body: JSON.stringify(data) }),
+  updateDestination: (id: string, data: DestinationCreateInput) =>
     request(`/content/destinations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDestination: (id: string) => request(`/content/destinations/${id}`, { method: 'DELETE' }),
 

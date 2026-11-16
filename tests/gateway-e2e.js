@@ -57,12 +57,14 @@ function simulateRequest(options, postBody = null) {
     // Invoke Gateway Handler
     handleGatewayRequest(req, res, serviceHandlers);
 
-    // Push Body
-    if (postBody) {
-      const data = typeof postBody === 'string' ? postBody : JSON.stringify(postBody);
-      req.emit('data', data);
-    }
-    req.emit('end');
+    // Deliver the body after async handlers have had a chance to attach listeners.
+    setImmediate(() => {
+      if (postBody) {
+        const data = typeof postBody === 'string' ? postBody : JSON.stringify(postBody);
+        req.emit('data', data);
+      }
+      req.emit('end');
+    });
   });
 }
 
@@ -106,14 +108,145 @@ async function runE2ETests() {
   console.log('\n4. [CONTENT-SERVICE via Gateway] GET /api/content/destinations');
   const destRes = await simulateRequest({ url: '/api/content/destinations' });
   assert.equal(destRes.statusCode, 200);
-  assert.ok(destRes.body.data.length >= 1);
+  assert.ok(destRes.body.data.length >= 22);
   const milan = destRes.body.data.find((d) => d.slug === 'milan');
   assert.ok(milan);
+  const manchester = destRes.body.data.find((d) => d.slug === 'manchester-musica-y-barrios');
+  assert.ok(manchester, 'Manchester must be available for editing in the admin');
+  assert.ok(manchester.heroImageUrl);
+  const updatedCoverImage = 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=85';
+  const updateDestinationRes = await simulateRequest(
+    { method: 'PUT', url: `/api/content/destinations/${manchester.id}` },
+    { heroImageUrl: updatedCoverImage }
+  );
+  assert.equal(updateDestinationRes.statusCode, 200);
+  assert.equal(updateDestinationRes.body.data.heroImageUrl, updatedCoverImage);
+  for (const slug of ['ciudad-de-mexico', 'san-salvador']) {
+    const destination = destRes.body.data.find((item) => item.slug === slug);
+    assert.ok(destination, `${slug} must be available through the content API`);
+    assert.equal(destination.status, 'published');
+    assert.equal(destination.guide.placesToVisit.length, 10);
+    assert.equal(destination.guide.typicalFoods.length, 6);
+  }
+  const commentRes = await simulateRequest(
+    { method: 'POST', url: `/api/content/destinations/${manchester.slug}/comments` },
+    { authorName: 'Viajeros', body: 'Un destino estupendo para descubrir a pie.' }
+  );
+  assert.equal(commentRes.statusCode, 201);
+  assert.equal(commentRes.body.data.body, 'Un destino estupendo para descubrir a pie.');
+  const voterKey = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const firstRatingRes = await simulateRequest(
+    { method: 'POST', url: `/api/content/destinations/${manchester.slug}/ratings` },
+    { voterKey, score: 5 }
+  );
+  assert.equal(firstRatingRes.statusCode, 200);
+  assert.equal(firstRatingRes.body.data.ratingCount, 1);
+  const updatedRatingRes = await simulateRequest(
+    { method: 'POST', url: `/api/content/destinations/${manchester.slug}/ratings` },
+    { voterKey, score: 3 }
+  );
+  assert.equal(updatedRatingRes.statusCode, 200);
+  assert.equal(updatedRatingRes.body.data.ratingCount, 1, 'A browser can update its rating without creating duplicates');
+  assert.equal(updatedRatingRes.body.data.averageRating, 3);
+  const engagementRes = await simulateRequest({ url: `/api/content/destinations/${manchester.slug}/engagement` });
+  assert.equal(engagementRes.statusCode, 200);
+  assert.equal(engagementRes.body.data.commentCount, 1);
+  assert.equal(engagementRes.body.data.comments[0].authorName, 'Viajeros');
+  const topRatedRes = await simulateRequest({ url: '/api/content/destinations/top-rated' });
+  assert.equal(topRatedRes.statusCode, 200);
+  assert.equal(topRatedRes.body.data.length, 5);
+  assert.equal(topRatedRes.body.data[0].slug, manchester.slug);
+  const allRatingsRes = await simulateRequest({ url: '/api/content/destinations/top-rated?limit=100' });
+  assert.equal(allRatingsRes.statusCode, 200);
+  assert.ok(allRatingsRes.body.data.length >= 22, 'The homepage can request ratings for all published destinations');
+  assert.equal(allRatingsRes.body.data[0].slug, manchester.slug);
+  assert.ok(
+    allRatingsRes.body.data.every((destination, index, destinations) =>
+      index === 0 || destinations[index - 1].averageRating >= destination.averageRating
+    ),
+    'The destination rating list must be ordered from the highest average to the lowest',
+  );
+  const invalidRankingLimitRes = await simulateRequest({ url: '/api/content/destinations/top-rated?limit=101' });
+  assert.equal(invalidRankingLimitRes.statusCode, 400);
+  const invalidRatingRes = await simulateRequest(
+    { method: 'POST', url: `/api/content/destinations/${manchester.slug}/ratings` },
+    { voterKey, score: 6 }
+  );
+  assert.equal(invalidRatingRes.statusCode, 400);
+  console.log('   ✅ Destination comments, editable one-per-browser ratings, and rating-sorted destination lists work');
   console.log(`   ✅ Retrieved ${destRes.body.data.length} destination(s): ${milan.name} (${milan.country})`);
   console.log(`   📌 Daily budget: ${milan.averageDailyBudget}€, Best time: ${milan.bestTimeToVisit}`);
 
+  // 5. Content - Create a city with a complete travel guide
+  console.log('\n5. [CONTENT-SERVICE via Gateway] POST /api/content/destinations (Create travel guide)');
+  const invalidDestinationRes = await simulateRequest(
+    { method: 'POST', url: '/api/content/destinations' },
+    { name: 'Copenhague', country: 'Dinamarca', type: 'city', status: 'published' }
+  );
+  assert.equal(invalidDestinationRes.statusCode, 400);
+  assert.ok(invalidDestinationRes.body.errors.guide);
+  assert.ok(invalidDestinationRes.body.errors.heroImageUrl);
+
+  const createDestinationRes = await simulateRequest(
+    { method: 'POST', url: '/api/content/destinations' },
+    {
+      name: 'Copenhague',
+      country: 'Dinamarca',
+      type: 'city',
+      description: 'Canales, diseño escandinavo y barrios llenos de vida.',
+      heroImageUrl: 'https://images.unsplash.com/photo-1513622470522-26c3c8a854bc',
+      bestTimeToVisit: 'Mayo a septiembre',
+      currency: 'DKK',
+      language: 'Danés e inglés',
+      averageDailyBudget: 1200,
+      latitude: 55.6761,
+      longitude: 12.5683,
+      status: 'published',
+      guide: {
+        headline: 'Qué ver en Copenhague: guía de viaje',
+        introduction: 'Copenhague combina canales históricos, arquitectura contemporánea y barrios con personalidad para explorar a pie.',
+        gettingAround: 'Metro, autobuses, trenes y bicicletas conectan los distintos barrios de la ciudad.',
+        suggestedDays: 3,
+        placesToVisit: [
+          { name: 'Nyhavn', description: 'El antiguo puerto conserva casas de colores y una animada zona junto al canal.', latitude: 55.6798, longitude: 12.5901 },
+          { name: 'Jardines de Tivoli', description: 'Un parque histórico con jardines, atracciones y restaurantes en el centro.', latitude: 55.6736, longitude: 12.5681 },
+          { name: 'Castillo de Rosenborg', description: 'Un castillo renacentista rodeado por los jardines del Rey.', latitude: 55.6851, longitude: 12.5773 },
+          { name: 'Palacio de Christiansborg', description: 'Sede de instituciones danesas con salas históricas y torre panorámica.', latitude: 55.6763, longitude: 12.5793 },
+          { name: 'La Sirenita', description: 'Escultura junto al puerto, accesible mediante un paseo por el frente marítimo.', latitude: 55.6929, longitude: 12.5993 },
+          { name: 'Palacio de Amalienborg', description: 'Residencia real formada por cuatro palacios alrededor de una plaza octogonal.', latitude: 55.6841, longitude: 12.5933 },
+          { name: 'Iglesia de Mármol', description: 'Iglesia de cúpula monumental situada junto al conjunto de Amalienborg.', latitude: 55.6846, longitude: 12.5896 },
+          { name: 'Torre Redonda', description: 'Torre histórica con rampa interior y vistas sobre los tejados del centro.', latitude: 55.6814, longitude: 12.5755 },
+          { name: 'Christiania', description: 'Barrio autogestionado conocido por su historia y sus espacios culturales.', latitude: 55.6737, longitude: 12.5985 },
+          { name: 'Jardín Botánico', description: 'Jardín y colección botánica junto al centro, con un invernadero histórico.', latitude: 55.6867, longitude: 12.5729 },
+        ],
+        typicalFoods: [
+          { name: 'Smørrebrød', imageUrl: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836', ingredients: ['pan de centeno', 'pescado', 'mantequilla'] },
+          { name: 'Frikadeller', imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1', ingredients: ['cerdo', 'cebolla', 'huevo'] },
+          { name: 'Wienerbrød', imageUrl: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb', ingredients: ['harina', 'mantequilla', 'azúcar'] },
+          { name: 'Stegt flæsk', imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947', ingredients: ['cerdo', 'patata', 'perejil'] },
+          { name: 'Rødgrød med fløde', imageUrl: 'https://images.unsplash.com/photo-1488477181946-6428a0291777', ingredients: ['frutos rojos', 'azúcar', 'nata'] },
+          { name: 'Flæskesteg', imageUrl: 'https://images.unsplash.com/photo-1547592180-85f173990554', ingredients: ['cerdo', 'laurel', 'clavo'] },
+        ],
+        travelTips: ['Reserva las atracciones más populares con antelación.', 'Comprueba horarios y transporte antes de salir.'],
+        faqs: [
+          { question: '¿Cuántos días necesito?', answer: 'Tres días permiten conocer los barrios y principales atractivos.' },
+          { question: '¿Cuál es la mejor época?', answer: 'De mayo a septiembre suele haber días más largos y templados.' },
+        ],
+      },
+    }
+  );
+  assert.equal(createDestinationRes.statusCode, 201);
+  assert.equal(createDestinationRes.body.data.slug, 'copenhague');
+  assert.equal(createDestinationRes.body.data.guide.placesToVisit.length, 10);
+  assert.equal(createDestinationRes.body.data.guide.typicalFoods.length, 6);
+  assert.ok(createDestinationRes.body.data.guide.typicalFoods.every((food) => food.imageUrl && food.ingredients.length >= 2));
+  const createdGuideRes = await simulateRequest({ url: '/api/content/destinations/copenhague' });
+  assert.equal(createdGuideRes.statusCode, 200);
+  assert.equal(createdGuideRes.body.data.guide.faqs.length, 2);
+  console.log('   ✅ City guide saved and returned with practical data, geolocated places and FAQs');
+
   // 5. Content - Places List (Verifying Leaflet Data)
-  console.log('\n5. [CONTENT-SERVICE via Gateway] GET /api/content/places?destinationId=' + milan.id);
+  console.log('\n6. [CONTENT-SERVICE via Gateway] GET /api/content/places?destinationId=' + milan.id);
   const placesRes = await simulateRequest({ url: `/api/content/places?destinationId=${milan.id}` });
   assert.equal(placesRes.statusCode, 200);
   assert.ok(placesRes.body.data.length >= 3);
@@ -128,7 +261,7 @@ async function runE2ETests() {
   console.log(`      Local Score:  ${firstPlace.localScore}/10 (Crowd Level: ${firstPlace.crowdLevel})`);
 
   // 6. Content - Create New Place via Admin (Leaflet Map Picker Flow)
-  console.log('\n6. [CONTENT-SERVICE via Gateway] POST /api/content/places (Admin creates new place)');
+  console.log('\n7. [CONTENT-SERVICE via Gateway] POST /api/content/places (Admin creates new place)');
   const createPlaceRes = await simulateRequest(
     {
       method: 'POST',
@@ -160,7 +293,7 @@ async function runE2ETests() {
   console.log(`   🗺️ Canonical OpenStreetMap URL auto-generated: ${createdPlace.openStreetMapUrl}`);
 
   // 7. Media Service - Upload Asset Metadata
-  console.log('\n7. [MEDIA-SERVICE via Gateway] POST /api/media/upload');
+  console.log('\n8. [MEDIA-SERVICE via Gateway] POST /api/media/upload');
   const mediaRes = await simulateRequest(
     {
       method: 'POST',
@@ -178,7 +311,7 @@ async function runE2ETests() {
   console.log(`   ✅ Image metadata saved to MinIO S3 bucket: ${mediaRes.body.data.url}`);
 
   // 8. Search Service - Multi-Entity Search
-  console.log('\n8. [SEARCH-SERVICE via Gateway] GET /api/search?q=milan');
+  console.log('\n9. [SEARCH-SERVICE via Gateway] GET /api/search?q=milan');
   const searchRes = await simulateRequest({ url: '/api/search?q=milan' });
   assert.equal(searchRes.statusCode, 200);
   assert.ok(searchRes.body.data.length > 0);
@@ -188,7 +321,7 @@ async function runE2ETests() {
   });
 
   // 9. Recommendations Service - Travel Copilot Engine
-  console.log('\n9. [TRAVEL COPILOT via Gateway] POST /api/recommendations/plan');
+  console.log('\n10. [TRAVEL COPILOT via Gateway] POST /api/recommendations/plan');
   console.log('   Input prompt: "Quiero 2 días en Milán, presupuesto 120€/día, me gusta la comida local y evitar multitudes."');
   const copilotRes = await simulateRequest(
     { method: 'POST', url: '/api/recommendations/plan' },
@@ -218,6 +351,25 @@ async function runE2ETests() {
     console.log(`      ⚠️  Consejo anti-multitudes: ${day.crowdTips}`);
     console.log(`      ☔  Alternativa si llueve: ${day.weatherAlternatives}`);
   });
+
+  const missingConsentRes = await simulateRequest(
+    { method: 'POST', url: '/api/recommendations/plan-and-send' },
+    {
+      destination: 'milan',
+      totalDays: 2,
+      budgetPerDay: 120,
+      currency: 'EUR',
+      interests: ['food'],
+      pace: 'balanced',
+      email: 'traveler@example.com',
+      itineraryConsent: false,
+      newsletterOptIn: false,
+      locale: 'es',
+    }
+  );
+  assert.equal(missingConsentRes.statusCode, 400);
+  assert.ok(missingConsentRes.body.errors.itineraryConsent);
+  console.log('   ✅ Personalized itinerary requests require consent before storage or email');
 
   console.log('\n=============================================================');
   console.log('🎉 TODOS LOS TESTS END-TO-END HAN PASADO CON ÉXITO (100%)');
